@@ -124,8 +124,8 @@ def draw_arrowhead_3d(start, end, color=(1, 0, 1), size=0.2, camera_pos=None,rad
     draw_oval_line(end, left_end, radius=radius, color=color)
     draw_oval_line(end, right_end, radius=radius, color=color)
 
-
 def draw_sphere(position, radius=0.1, slices=12, stacks=12, color=(1,0,1)):
+
     glPushMatrix()
     glTranslatef(*position)
     glColor3fv(color)
@@ -277,6 +277,33 @@ def draw_axes(length=2.0, camera_pos = None):
     draw_text_3d("+Z", (0, 0, length + 0.2), color=(0,0,1), font_size=label_size)
     draw_text_3d("-Z", (0, 0, -length - 0.6), color=(0,0,1), font_size=label_size)
 
+
+def draw_cylinder_axis(start, end, radius=0.1, slices=16, color=(1.0, 0.0, 0.0)):
+    # Compute vector from start to end
+    dx = end[0] - start[0]
+    dy = end[1] - start[1]
+    dz = end[2] - start[2]
+    length = (dx ** 2 + dy ** 2 + dz ** 2) ** 0.5
+
+    # Save current matrix
+    glPushMatrix()
+
+    # Move to start position
+    glTranslatef(*start)
+
+    # Compute rotation
+    if length > 0.0001:
+        # axis of rotation is cross product of (0,0,1) and direction vector
+        ax = [-dy, dx, 0.0]
+        angle = math.degrees(math.acos(dz / length))
+        glRotatef(angle, *ax)
+
+    glColor3f(*color)
+    quad = gluNewQuadric()
+    gluCylinder(quad, radius, radius, length, slices, 1)
+    gluDeleteQuadric(quad)
+
+    glPopMatrix()
 def draw_text_2d(text, position, color=(1,1,1), font_size=20):
     font = pygame.font.SysFont("Arial", font_size, True)
     text_surface = font.render(text, True, (int(color[0]*255), int(color[1]*255), int(color[2]*255)))
@@ -414,34 +441,86 @@ def draw_oval_line(start, end, radius=0.005, segments=12, color=(1,1,0)):
     glEnd()
 
 
-def draw_planes(length=2.0):
-    # XY plane
-    glColor3f(1, 0, 0)
-
+def draw_planes(size=2.0,step = 1.0,colored = False):
+    # ---- Draw plain white planes ----
+    if colored:  # White color
+        glColor3f(0.8, 0.8, 0.8)
+    else:
+        glColor3f(1.0, 0, 0)
+    # XZ plane
     glBegin(GL_QUADS)
-    glVertex3f(-length, -length, 0)
-    glVertex3f(length, -length, 0)
-    glVertex3f(length, length, 0)
-    glVertex3f(-length, length, 0)
+    glVertex3f(-size, 0, -size)
+    glVertex3f(size, 0, -size)
+    glVertex3f(size, 0, size)
+    glVertex3f(-size, 0, size)
     glEnd()
+
+    if colored:  # White color
+        glColor3f(0.8, 0.8, 0.8)
+    else:
+        glColor3f(0, 1, 0)
+
+    # XY plane
+    glBegin(GL_QUADS)
+    glVertex3f(-size, -size, 0)
+    glVertex3f(size, -size, 0)
+    glVertex3f(size, size, 0)
+    glVertex3f(-size, size, 0)
+    glEnd()
+
+    if colored:  # White color
+        glColor3f(0.8, 0.8, 0.8)
+    else:
+        glColor3f(0, 0, 1)
 
     # YZ plane
-    glColor3f(0, 1, 0)
     glBegin(GL_QUADS)
-    glVertex3f(0, -length, -length)
-    glVertex3f(0, length, -length)
-    glVertex3f(0, length, length)
-    glVertex3f(0, -length, length)
+    glVertex3f(0, -size, -size)
+    glVertex3f(0, size, -size)
+    glVertex3f(0, size, size)
+    glVertex3f(0, -size, size)
     glEnd()
 
-    # XZ plane
-    glColor3f(0, 0, 1)
-    glBegin(GL_QUADS)
-    glVertex3f(-length, 0, -length)
-    glVertex3f(length, 0, -length)
-    glVertex3f(length, 0, length)
-    glVertex3f(-length, 0, length)
+    # ---- Draw grid lines ----
+    glColor3f(0, 0,0)  # Gray lines
+
+    # XZ plane grid
+    glBegin(GL_LINES)
+    for x in range(-int(size), int(size) + 1, int(step)):
+        glVertex3f(x, 0, -size)
+        glVertex3f(x, 0, size)
+    for z in range(-int(size), int(size) + 1, int(step)):
+        glVertex3f(-size, 0, z)
+        glVertex3f(size, 0, z)
     glEnd()
+
+    # XY plane grid
+    glBegin(GL_LINES)
+    for x in range(-int(size), int(size) + 1, int(step)):
+        glVertex3f(x, -size, 0)
+        glVertex3f(x, size, 0)
+    for y in range(-int(size), int(size) + 1, int(step)):
+        glVertex3f(-size, y, 0)
+        glVertex3f(size, y, 0)
+    glEnd()
+
+    # YZ plane grid
+    glBegin(GL_LINES)
+    for y in range(-int(size), int(size) + 1, int(step)):
+        glVertex3f(0, y, -size)
+        glVertex3f(0, y, size)
+    for z in range(-int(size), int(size) + 1, int(step)):
+        glVertex3f(0, -size, z)
+        glVertex3f(0, size, z)
+    glEnd()
+
+    # ---- Draw axes ----
+    draw_cylinder_axis(start=(-size, 0, 0), end=(size, 0, 0), radius=0.05, color=(0.0, 0.0, 0.0))
+    draw_cylinder_axis(start=(0, -size, 0), end=(0, size, 0), radius=0.05, color=(0.0, 0.0, 0.0))
+    draw_cylinder_axis(start=(0, 0, -size), end=(0, 0, size), radius=0.05, color=(0.0, 0.0, 0.0))
+
+
+
 
 def draw_circle_2d(position, radius=0.1, segments=24, color=(1,1,0)):
     glColor3fv(color)
@@ -593,10 +672,10 @@ def draw_axes_2d():
     # Draw axes lines
     glLineWidth(3.0)
     glBegin(GL_LINES)
-    glColor3f(1, 1, 1)  # X axis line
+    glColor3f(1, 0, 0)  # X axis line
     glVertex2f(left, 0)
     glVertex2f(right, 0)
-    glColor3f(1, 1, 1)  # Y axis line
+    glColor3f(0, 1, 0)  # Y axis line
     glVertex2f(0, bottom)
     glVertex2f(0, top)
     glEnd()
@@ -653,7 +732,7 @@ def draw_vectors_3d(vectors, line_width=6, base_arrow_size=0.15):
         draw_arrowhead_3d((0, 0, 0), vec, color=(1, 0, 1), size=arrow_size)
     glPopAttrib()
 
-def draw_vectors_2d_animated(vectors, dt, line_width=6, arrow_fraction=0.15, speed=2.0, ortho_scale=6.0):
+def draw_vectors_2d_animated(vectors, dt, line_width=6, arrow_fraction=0.15, speed=2.0, ortho_scale=6.0, color = (1,1,1)):
     glPushAttrib(GL_LINE_BIT | GL_CURRENT_BIT)
     glLineWidth(line_width)
 
@@ -669,7 +748,7 @@ def draw_vectors_2d_animated(vectors, dt, line_width=6, arrow_fraction=0.15, spe
             px, py = x * v['progress'], y * v['progress']
 
             # Draw line
-            glColor3f(1, 1, 0)
+            glColor3f(*color)
             glBegin(GL_LINES)
             glVertex2f(0, 0)
             glVertex2f(px, py)
@@ -682,7 +761,7 @@ def draw_vectors_2d_animated(vectors, dt, line_width=6, arrow_fraction=0.15, spe
             arrow_size = min(base_arrow_size, vec_len / 5.0)
             arrow_angle = 0.3
             glBegin(GL_LINES)
-            glColor3f(1, 0, 1)
+            glColor3f(*color)
             # Left side
             glVertex2f(px, py)
             glVertex2f(px - arrow_size * math.cos(angle - arrow_angle),
@@ -704,7 +783,7 @@ def draw_vectors_2d_animated(vectors, dt, line_width=6, arrow_fraction=0.15, spe
                 v['row_progress'][i] = min(v['row_progress'][i] + dt * speed, 1.0)
                 px, py = x * v['row_progress'][i], y * v['row_progress'][i]
 
-                glColor3f(1, 1, 0)
+                glColor3f(*color)
                 glBegin(GL_LINES)
                 glVertex2f(0, 0)
                 glVertex2f(px, py)
@@ -716,7 +795,7 @@ def draw_vectors_2d_animated(vectors, dt, line_width=6, arrow_fraction=0.15, spe
                 arrow_size = min(base_arrow_size, vec_len / 3.0)
                 arrow_angle = 0.3
                 glBegin(GL_LINES)
-                glColor3f(1, 0, 1)
+                glColor3f(*color)
                 glVertex2f(px, py)
                 glVertex2f(px - arrow_size * math.cos(angle - arrow_angle),
                            py - arrow_size * math.sin(angle - arrow_angle))
@@ -726,7 +805,7 @@ def draw_vectors_2d_animated(vectors, dt, line_width=6, arrow_fraction=0.15, spe
                 glEnd()
     glPopAttrib()
 
-def draw_vectors_3d_animated(vectors, dt, line_width=6, base_arrow_size=0.15, speed=2.0, camera_pos=None):
+def draw_vectors_3d_animated(vectors, dt, line_width=6, base_arrow_size=0.15, speed=2.0, camera_pos=None, color = (1,1,1)):
     glPushAttrib(GL_LINE_BIT | GL_CURRENT_BIT)
     glLineWidth(line_width)
 
@@ -764,11 +843,11 @@ def draw_vectors_3d_animated(vectors, dt, line_width=6, base_arrow_size=0.15, sp
             radius = max(radius, min_radius)
 
             # Draw line and arrowhead
-            draw_oval_line(start_vec, (px, py, pz), radius=radius)
+            draw_oval_line(start_vec, (px, py, pz), radius=radius,color = color)
             if v['progress'] >= 1.0:
                 draw_arrowhead_3d(
                     start_vec, (px, py, pz),
-                    color=v.get('color', (1, 0, 1)),
+                    color=v.get('color', color),
                     size=max(0.5, radius * 8),
                     camera_pos=camera_pos,
                     radius=radius
@@ -812,10 +891,6 @@ def draw_vectors_3d_animated(vectors, dt, line_width=6, base_arrow_size=0.15, sp
                     )
 
     glPopAttrib()
-
-
-
-
 
 def reset_vector_animation(vectors):
     for v in vectors:
@@ -878,12 +953,9 @@ import ast
 # Add this at the top of your imports
 def main():
     global input_text, show_input_active
-    pending_vector = None
-    vectors_as_points = True
-    draw_button_rect = (WIDTH - 160, 120, 140, 35)
-
     multiplication_input = ""  # stores the text typed in multiplication input
     show_multiplication_active = False  # tracks if multiplication input is active
+    background_dark = True
     multiplication_rect = pygame.Rect(WIDTH - 160, 120, 140, 30)  # position of new input box
 
     global input_text, show_input_active, selected_vector_index  # <--- add this
@@ -904,6 +976,7 @@ def main():
 
     glEnable(GL_DEPTH_TEST)
     glClearColor(0.0, 0.0, 0.0, 1.0)
+    #glClearColor(1.0, 1.0, 1.0, 1.0)
 
     distance, azimuth, elevation = 7.0, 45.0, 25.0
     target = [0.0, 0.0, 0.0]
@@ -1013,7 +1086,7 @@ def main():
                     else:
                         multiplication_input += event.unicode
                 elif event.key == K_g:
-                    grid_mode = (grid_mode + 1) % 3
+                    grid_mode = (grid_mode + 1) % 4
                 elif event.key == K_a:
                     show_axes = not show_axes
                 elif event.key == K_r:
@@ -1048,6 +1121,12 @@ def main():
 
             # --- MOUSE ---
             elif event.type == MOUSEBUTTONDOWN:
+                if toggle_bg_rect.collidepoint(mx, my):
+                    background_dark = not background_dark
+                    if background_dark:
+                        glClearColor(0.0, 0.0, 0.0, 1.0)
+                    else:
+                        glClearColor(1.0, 1.0, 1.0, 1.0)
                 if multiplication_rect.collidepoint(mx, my):
                     show_multiplication_active = True
                     show_input_active = False  # optionally deactivate the other input
@@ -1146,24 +1225,30 @@ def main():
             glLoadIdentity()
             draw_grid_2d.ortho = ortho_scale
             draw_grid_2d.pan = (pan_offset_x, pan_offset_y)
-            if grid_mode != 0:
+            if grid_mode % 2 == 0:
                 draw_grid_2d(step=1.0, z=-0.1)
             if show_axes:
                 draw_axes_2d()
 
+            if not background_dark:  # Light mode → always black
+                sphere_color = (0, 0, 0)
+            else:  # Dark mode
+                sphere_color = (1, 1, 1)
+
             if vectors_as_points:
+
                 for v in all_vectors:
                     vec = v['vec']
                     base_radius = 0.07
                     radius = base_radius * ortho_scale / 6.5
                     # Single vector
                     if isinstance(vec[0], (int, float)):
-                        draw_circle_2d([vec[0], vec[1], 0], radius=radius, color=(1, 1, 0))
+                        draw_circle_2d([vec[0], vec[1], 0], radius=radius, color=sphere_color)
                     else:
                         for row in vec:
-                            draw_circle_2d([row[0], row[1], 0], radius=radius, color=(1, 1, 0))
+                            draw_circle_2d([row[0], row[1], 0], radius=radius, color=sphere_color)
             else:
-                draw_vectors_2d_animated(all_vectors, dt, ortho_scale=ortho_scale)
+                draw_vectors_2d_animated(all_vectors, dt, ortho_scale=ortho_scale, color = sphere_color)
 
         else:
             rad_az, rad_el = math.radians(azimuth), math.radians(elevation)
@@ -1182,14 +1267,24 @@ def main():
             if grid_mode == 1:
                 draw_planes(LENGTH_XYZ)
             elif grid_mode == 2:
-                glColor3f(1, 1, 1)
+                draw_planes(LENGTH_XYZ,colored = True)
+            elif grid_mode == 3:
                 draw_grid(LENGTH_XYZ)
 
             if show_axes:
                 camera_pos = (cam_x, cam_y, cam_z)
                 draw_axes(LENGTH_XYZ,camera_pos)
 
+            if not background_dark:  # Light mode → always black
+                sphere_color = (0, 0, 0)
+            else:  # Dark mode
+                if grid_mode in (1, 2):
+                    sphere_color = (0, 0, 0)
+                else:
+                    sphere_color = (1, 1, 1)
+
             if vectors_as_points:
+
                 for v in all_vectors:
                     vec = v['vec']
                     base_radius = 0.07
@@ -1199,22 +1294,26 @@ def main():
                     # Single vector
                     if isinstance(vec[0], (int, float)):
                         vec3d = list(vec) + [0] * (3 - len(vec))
-                        draw_sphere(vec3d, radius=radius, color=(1, 1, 0))
+                        draw_sphere(vec3d, radius=radius, color=sphere_color)
                     # Matrix
                     else:
                         for row in vec:
                             vec3d = list(row) + [0] * (3 - len(row))
-                            draw_sphere(vec3d, radius=radius, color=(1, 1, 0))
+                            draw_sphere(vec3d, radius=radius, color=sphere_color)
 
             else:
                 camera_pos = (cam_x, cam_y, cam_z)
-                draw_vectors_3d_animated(all_vectors, dt, camera_pos=camera_pos)
+                draw_vectors_3d_animated(all_vectors, dt, camera_pos=camera_pos,color = sphere_color)
 
         draw_dropdown(animated_vectors, selected_vector_index, dropdown_rect, dropdown_open)
         draw_button_2d(*button_rect, "Switch 2D" if not view_2d_mode else "Switch 3D", active=view_2d_mode)
         draw_button_2d(*draw_button_rect, "Draw Vector", active=False)
         input_rect = pygame.Rect(WIDTH - 160, 75, 140, 30)
         draw_input_box_3d(*input_rect, input_text, active=show_input_active)
+        toggle_bg_rect = pygame.Rect(20, HEIGHT - 50, 120, 35)
+        label = "Dark Mode" if background_dark else "Light Mode"
+        draw_button_2d(toggle_bg_rect.x, toggle_bg_rect.y, toggle_bg_rect.width, toggle_bg_rect.height, label,
+                       active=True)
 
         multiplication_rect = pygame.Rect(WIDTH - 160, 170, 140, 30)  # Adjust position
         draw_input_box_3d(*multiplication_rect, multiplication_input, active=show_multiplication_active)
