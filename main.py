@@ -403,8 +403,7 @@ def draw_oval_line(start, end, radius=0.005, segments=12, color=(1,1,0)):
         glVertex3fv(end + offset)
     glEnd()
 
-
-def draw_planes_3D(size=2.0,step = 1.0,colored = False):
+def draw_planes_3D(size=2.0, step=1.0, colored=False, camera_pos = (0,0,0)):
     # ---- Draw plain white planes ----
     if colored:  # White color
         glColor3f(0.8, 0.8, 0.8)
@@ -445,10 +444,10 @@ def draw_planes_3D(size=2.0,step = 1.0,colored = False):
     glEnd()
 
     # ---- Draw grid lines ----
-    glColor3f(0, 0,0)  # Gray lines
-
+    glColor3f(0, 0, 0)  # Gray lines
     # XZ plane grid
     glBegin(GL_LINES)
+
     for x in range(-int(size), int(size) + 1, int(step)):
         glVertex3f(x, 0, -size)
         glVertex3f(x, 0, size)
@@ -481,8 +480,6 @@ def draw_planes_3D(size=2.0,step = 1.0,colored = False):
     draw_cylinder_axis(start=(-size, 0, 0), end=(size, 0, 0), radius=0.05, color=(0.0, 0.0, 0.0))
     draw_cylinder_axis(start=(0, -size, 0), end=(0, size, 0), radius=0.05, color=(0.0, 0.0, 0.0))
     draw_cylinder_axis(start=(0, 0, -size), end=(0, 0, size), radius=0.05, color=(0.0, 0.0, 0.0))
-
-
 
 
 def draw_circle_2d(position, radius=0.1, segments=24, color=(1,1,0)):
@@ -926,10 +923,25 @@ def main():
         selected_vector_index = None
 
     pygame.init()
-    screen = pygame.display.set_mode((WIDTH, HEIGHT), DOUBLEBUF | OPENGL)
-    pygame.display.set_caption("XYZ axes — mouse control")
 
+    # --- Enable hardware multisampling before creating the window ---
+    pygame.display.gl_set_attribute(pygame.GL_MULTISAMPLEBUFFERS, 1)
+    pygame.display.gl_set_attribute(pygame.GL_MULTISAMPLESAMPLES, 4)
+
+    # --- Create the OpenGL window ---
+    screen = pygame.display.set_mode((WIDTH, HEIGHT), DOUBLEBUF | OPENGL)
+    pygame.display.set_caption("XYZ axes — mouse control (Antialiasing ON)")
+
+    # --- Enable depth and smoothing ---
     glEnable(GL_DEPTH_TEST)
+    # --- Antialiasing setup ---
+    glEnable(GL_MULTISAMPLE)  # enable MSAA (multisample anti-aliasing)
+    glEnable(GL_BLEND)  # enable blending for smooth edges
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+    glEnable(GL_LINE_SMOOTH)  # smooth lines
+    glHint(GL_LINE_SMOOTH_HINT, GL_NICEST)
+    glHint(GL_POLYGON_SMOOTH_HINT, GL_NICEST)
+
     glClearColor(0.0, 0.0, 0.0, 1.0)
     #glClearColor(1.0, 1.0, 1.0, 1.0)
 
@@ -1220,9 +1232,9 @@ def main():
             gluLookAt(cam_x, cam_y, cam_z, target[0], target[1], target[2], 0, 1, 0)
 
             if grid_mode == 1:
-                draw_planes_3D(LENGTH_XYZ)
+                draw_planes_3D(LENGTH_XYZ, camera_pos = camera_pos)
             elif grid_mode == 2:
-                draw_planes_3D(LENGTH_XYZ,colored = True)
+                draw_planes_3D(LENGTH_XYZ,colored = True, camera_pos = camera_pos)
             elif grid_mode == 3:
                 draw_grid_3D(LENGTH_XYZ)
 
