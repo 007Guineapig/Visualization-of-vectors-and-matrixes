@@ -1,10 +1,13 @@
-import sys
+
 import math
 import pygame
 import numpy as np
 from pygame.locals import *
 from OpenGL.GL import *
 from OpenGL.GLU import *
+from numpy import array, cross, linalg
+from math import sin, cos, pi
+import ast
 
 # --- Settings ---
 WIDTH, HEIGHT = 900, 700
@@ -125,7 +128,6 @@ def draw_arrowhead_3d(start, end, color=(1, 0, 1), size=0.2, camera_pos=None,rad
     draw_oval_line(end, right_end, radius=radius, color=color)
 
 def draw_sphere(position, radius=0.1, slices=12, stacks=12, color=(1,0,1)):
-
     glPushMatrix()
     glTranslatef(*position)
     glColor3fv(color)
@@ -183,13 +185,13 @@ def draw_input_box_3d(x, y, w, h, text, active=False):
     # Draw text on top of rectangle
     glBindTexture(GL_TEXTURE_2D, tex_id)
     glBegin(GL_QUADS)
-    glTexCoord2f(0, 0);
+    glTexCoord2f(0, 0)
     glVertex2f(x + 5, y + 5 + th)
-    glTexCoord2f(1, 0);
+    glTexCoord2f(1, 0)
     glVertex2f(x + 5 + tw, y + 5 + th)
-    glTexCoord2f(1, 1);
+    glTexCoord2f(1, 1)
     glVertex2f(x + 5 + tw, y + 5)
-    glTexCoord2f(0, 1);
+    glTexCoord2f(0, 1)
     glVertex2f(x + 5, y + 5)
     glEnd()
 
@@ -205,40 +207,7 @@ def draw_input_box_3d(x, y, w, h, text, active=False):
     glPopMatrix()
     glMatrixMode(GL_MODELVIEW)
 
-
-
-def draw_arrowhead(dir_vec, color=(1,0,0), arrow_size=0.15):
-    dir_vec = np.array(dir_vec, dtype=float)
-    length = np.linalg.norm(dir_vec)
-    if length == 0:
-        return
-
-    # Normalize
-    dir_norm = dir_vec / length
-
-    # Find a perpendicular vector for the base of the arrow
-    if abs(dir_norm[0]) < 0.001 and abs(dir_norm[1]) < 0.001:
-        up = np.array([0,1,0])
-    else:
-        up = np.array([0,0,1])
-    side = np.cross(dir_norm, up)
-    side /= np.linalg.norm(side)
-    up_vec = np.cross(side, dir_norm)
-
-    # Arrow tip at end
-    tip = dir_vec
-    # Base center
-    base = tip - dir_norm * arrow_size
-    glColor3fv(color)
-    glBegin(GL_TRIANGLES)
-    for angle in np.linspace(0, 2*np.pi, 6, endpoint=False):
-        offset = side * np.cos(angle) * arrow_size/2 + up_vec * np.sin(angle) * arrow_size/2
-        glVertex3fv(tip)
-        glVertex3fv(base + offset)
-        glVertex3fv(base - offset)
-    glEnd()
-
-def draw_axes(length=2.0, camera_pos = None):
+def draw_axes_3D(length=2.0, camera_pos = None):
     # Draw axis lines
     glLineWidth(5.0)
     glBegin(GL_LINES)
@@ -265,8 +234,6 @@ def draw_axes(length=2.0, camera_pos = None):
     draw_arrowhead_3d((0, 0, 0), (-length, 0, 0), color=(1, 0, 0),size=arrow_size,camera_pos=camera_pos)
     draw_arrowhead_3d((0, 0, 0), (0, -length, 0), color=(0, 1, 0),size=arrow_size,camera_pos=camera_pos)
     draw_arrowhead_3d((0, 0, 0), (0, 0, -length), color=(0, 0, 1),size=arrow_size,camera_pos=camera_pos)
-
-
     # Draw axis labels
     label_size = 100  # scale for text
 
@@ -304,6 +271,7 @@ def draw_cylinder_axis(start, end, radius=0.1, slices=16, color=(1.0, 0.0, 0.0))
     gluDeleteQuadric(quad)
 
     glPopMatrix()
+
 def draw_text_2d(text, position, color=(1,1,1), font_size=20):
     font = pygame.font.SysFont("Arial", font_size, True)
     text_surface = font.render(text, True, (int(color[0]*255), int(color[1]*255), int(color[2]*255)))
@@ -335,7 +303,7 @@ def draw_text_2d(text, position, color=(1,1,1), font_size=20):
     glDisable(GL_BLEND)
     glDeleteTextures([tex_id])
 
-def draw_grid(size=10.0, step=1.0):
+def draw_grid_3D(size=10.0, step=1.0):
     """
     Draw a 3D grid along XZ, XY, and YZ planes with colors for each axis:
     X = red, Y = green, Z = blue.
@@ -407,11 +375,6 @@ def draw_grid_2d(step=1.0, z=-0.1, max_lines=200):
 
 def draw_oval_line(start, end, radius=0.005, segments=12, color=(1,1,0)):
 
-
-
-    from numpy import array, cross, linalg
-    from math import sin, cos, pi
-
     start = array(start, dtype=float)
     end = array(end, dtype=float)
     dir_vec = end - start
@@ -430,7 +393,7 @@ def draw_oval_line(start, end, radius=0.005, segments=12, color=(1,1,0)):
     up_vec = cross(side, dir_vec)
     up_vec /= linalg.norm(up_vec)
 
-    glColor3fv(color)  # <--- Set the color here
+    glColor3fv(color)
 
     glBegin(GL_TRIANGLE_STRIP)
     for i in range(segments+1):
@@ -441,7 +404,7 @@ def draw_oval_line(start, end, radius=0.005, segments=12, color=(1,1,0)):
     glEnd()
 
 
-def draw_planes(size=2.0,step = 1.0,colored = False):
+def draw_planes_3D(size=2.0,step = 1.0,colored = False):
     # ---- Draw plain white planes ----
     if colored:  # White color
         glColor3f(0.8, 0.8, 0.8)
@@ -568,13 +531,13 @@ def draw_text_3d(text, position, color=(1, 1, 1), font_size=24, scale=0.01):
     sy = h * scale
 
     glBegin(GL_QUADS)
-    glTexCoord2f(0, 0);
+    glTexCoord2f(0, 0)
     glVertex3f(0, 0, 0)
-    glTexCoord2f(1, 0);
+    glTexCoord2f(1, 0)
     glVertex3f(sx, 0, 0)
-    glTexCoord2f(1, 1);
+    glTexCoord2f(1, 1)
     glVertex3f(sx, sy, 0)
-    glTexCoord2f(0, 1);
+    glTexCoord2f(0, 1)
     glVertex3f(0, sy, 0)
     glEnd()
 
@@ -713,12 +676,6 @@ def draw_axes_2d():
     glMatrixMode(GL_PROJECTION)
     glPopMatrix()
     glMatrixMode(GL_MODELVIEW)
-
-
-def frange(start, stop, step):
-    while start <= stop:
-        yield start
-        start += step
 
 def draw_vectors_3d(vectors, line_width=6, base_arrow_size=0.15):
     glPushAttrib(GL_LINE_BIT | GL_CURRENT_BIT)
@@ -948,8 +905,6 @@ def max_from_vectors(vectors):
             max_val = current_max
 
     return max_val
-
-import ast
 # Add this at the top of your imports
 def main():
     global input_text, show_input_active
@@ -1265,15 +1220,15 @@ def main():
             gluLookAt(cam_x, cam_y, cam_z, target[0], target[1], target[2], 0, 1, 0)
 
             if grid_mode == 1:
-                draw_planes(LENGTH_XYZ)
+                draw_planes_3D(LENGTH_XYZ)
             elif grid_mode == 2:
-                draw_planes(LENGTH_XYZ,colored = True)
+                draw_planes_3D(LENGTH_XYZ,colored = True)
             elif grid_mode == 3:
-                draw_grid(LENGTH_XYZ)
+                draw_grid_3D(LENGTH_XYZ)
 
             if show_axes:
                 camera_pos = (cam_x, cam_y, cam_z)
-                draw_axes(LENGTH_XYZ,camera_pos)
+                draw_axes_3D(LENGTH_XYZ,camera_pos)
 
             if not background_dark:  # Light mode → always black
                 sphere_color = (0, 0, 0)
