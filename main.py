@@ -26,9 +26,24 @@ dropdown_rect = pygame.Rect(10, 10, 150, 30)
 dropdown_item_height = 25
 selected_vector_index = -1  # -1 = none selected
 
+def format_number(x):
+    """Format number nicely — remove .0 when not needed"""
+    if float(x).is_integer():
+        return str(int(x))
+    else:
+        return f"{x:.2f}".rstrip('0').rstrip('.')
+
+def format_vector(vec):
+    """Format vectors and matrices cleanly for display"""
+    if isinstance(vec[0], (int, float)):
+        # Simple vector like (1,2,3)
+        return "(" + ", ".join(format_number(x) for x in vec) + ")"
+    else:
+        # Matrix like ((1,2,3),(4,5,6))
+        return "(" + ", ".join("(" + ", ".join(format_number(x) for x in row) + ")" for row in vec) + ")"
+
 def draw_dropdown(vectors, selected_index, rect, open=False):
     """Draw a top-left dropdown for vectors."""
-    # Draw main box
     glMatrixMode(GL_PROJECTION)
     glPushMatrix()
     glLoadIdentity()
@@ -54,8 +69,11 @@ def draw_dropdown(vectors, selected_index, rect, open=False):
     glVertex2f(rect.x, rect.y + rect.height)
     glEnd()
 
-    # Draw selected vector text
-    label = "Select Vector" if selected_index == -1 else str(vectors[selected_index]['vec'])
+    # Draw selected vector text (formatted)
+    if selected_index == -1:
+        label = "Select Vector"
+    else:
+        label = format_vector(vectors[selected_index]['vec'])
     draw_text_2d(label, (rect.x + 5, rect.y + 5), color=(0,0,0), font_size=18)
 
     # Draw dropdown items if open
@@ -69,7 +87,7 @@ def draw_dropdown(vectors, selected_index, rect, open=False):
             glVertex2f(rect.x + rect.width, y + dropdown_item_height)
             glVertex2f(rect.x, y + dropdown_item_height)
             glEnd()
-            # Draw border
+            # Border
             glColor3f(0,0,0)
             glBegin(GL_LINE_LOOP)
             glVertex2f(rect.x, y)
@@ -77,14 +95,13 @@ def draw_dropdown(vectors, selected_index, rect, open=False):
             glVertex2f(rect.x + rect.width, y + dropdown_item_height)
             glVertex2f(rect.x, y + dropdown_item_height)
             glEnd()
-            # Draw text
-            draw_text_2d(str(v['vec']), (rect.x + 5, y + 5), color=(0,0,0), font_size=16)
+            # Formatted text
+            draw_text_2d(format_vector(v['vec']), (rect.x + 5, y + 5), color=(0,0,0), font_size=16)
 
     glPopMatrix()
     glMatrixMode(GL_PROJECTION)
     glPopMatrix()
     glMatrixMode(GL_MODELVIEW)
-
 
 def draw_arrowhead_3d(start, end, color=(1, 0, 1), size=0.2, camera_pos=None,radius = 0.05):
     """
@@ -492,6 +509,7 @@ def draw_circle_2d(position, radius=0.1, segments=24, color=(1,1,0)):
         y = position[1] + math.sin(angle) * radius
         glVertex3f(x, y, position[2])
     glEnd()
+
 
 def draw_text_3d(text, position, color=(1, 1, 1), font_size=24, scale=0.01):
     """Draw 3D text at a world position, facing the camera."""
@@ -904,6 +922,19 @@ def max_from_vectors(vectors):
     return max_val
 # Add this at the top of your imports
 def main():
+
+
+    matrix_size_input = ""
+    random_range_input = ""
+    show_matrix_size_active = False
+    show_random_range_active = False
+
+    matrix_size_rect = pygame.Rect(WIDTH - 210, 240, 60, 30)   # left of matrix input
+    random_range_rect = pygame.Rect(WIDTH - 140, 240, 60, 30)  # next to size input
+    random_button_rect = pygame.Rect(WIDTH - 70, 240, 60, 30) # next to random range inpu
+
+
+
     global input_text, show_input_active
     multiplication_input = ""  # stores the text typed in multiplication input
     show_multiplication_active = False  # tracks if multiplication input is active
@@ -913,11 +944,25 @@ def main():
     global input_text, show_input_active, selected_vector_index  # <--- add this
     pending_vector = None
     vectors_as_points = True
-    draw_button_rect = (WIDTH - 160, 120, 140, 35)
+
+
+    matrix_inputs = [["" for _ in range(3)] for _ in range(3)]
+    matrix_active_cell = (-1, -1)  # (row, col)
+    matrix_cell_w, matrix_cell_h = 40, 30
+    matrix_gap = 5
+    matrix_start_x, matrix_start_y = WIDTH - 155, 130  # adjust position
+    matrix_start_xx, matrix_start_yy = WIDTH - 155, 300  # adjust position
+    show_matrix_input = True  # toggle with a key (M)
+
+    def get_matrix_values():
+        try:
+            return [[float(cell) if cell else 0.0 for cell in row] for row in matrix_inputs]
+        except ValueError:
+            print("Invalid matrix entry")
+            return None
 
     # --- Dropdown variables ---
     #dropdown_rect = pygame.Rect(WIDTH - 160, 160, 140, 30)
-    dropdown_item_height = 25
     dropdown_open = False
     if 'selected_vector_index' not in globals():
         selected_vector_index = None
@@ -958,6 +1003,7 @@ def main():
     clock = pygame.time.Clock()
     view_2d_mode = True
     button_rect = (WIDTH - 160, 30, 140, 35)
+    draw_button_rect = (WIDTH - 160, 75, 140, 35)
 
     grid_mode = 0  # 0 = none, 1 = planes, 2 = grid
     show_axes = True
@@ -1001,8 +1047,106 @@ def main():
 
         mx, my = pygame.mouse.get_pos()
 
+
         # --- EVENTS ---
         for event in pygame.event.get():
+            if show_matrix_input:
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    if matrix_size_rect.collidepoint(event.pos):
+                        show_matrix_size_active = True
+                        show_random_range_active = False
+                    elif random_range_rect.collidepoint(event.pos):
+                        show_random_range_active = True
+                        show_matrix_size_active = False
+                    elif random_button_rect.collidepoint(event.pos):
+                        # Generate random matrix
+                        try:
+                            rows, cols = map(int, matrix_size_input.split(','))
+                            if not (1 <= rows <= 3 and 1 <= cols <= 3):
+                                print("Only up to 3x3 supported")
+                            else:
+                                low, high = (0, 9)
+                                if random_range_input:
+                                    parts = random_range_input.split(',')
+                                    if len(parts) == 2:
+                                        low, high = map(float, parts)
+                                import random
+                                matrix_inputs = [[str(round(random.uniform(low, high), 2)) for _ in range(cols)]
+                                                 for _ in range(rows)]
+                                # fill empty cells if smaller than 3×3
+                                for r in range(3 - len(matrix_inputs)):
+                                    matrix_inputs.append([""] * 3)
+                                for r in range(len(matrix_inputs)):
+                                    while len(matrix_inputs[r]) < 3:
+                                        matrix_inputs[r].append("")
+                                print(f"Generated random {rows}x{cols} matrix.")
+                        except Exception as e:
+                            print("Invalid size or range:", e)
+                    else:
+                        show_matrix_size_active = show_random_range_active = False
+
+                elif event.type == pygame.KEYDOWN:
+
+                    if matrix_active_cell != (-1, -1) and not (show_matrix_size_active or show_random_range_active):
+                        r, c = matrix_active_cell
+                        if event.key == pygame.K_RETURN:
+                            matrix_active_cell = (-1, -1)  # finish editing
+                        elif event.key == pygame.K_BACKSPACE:
+                            matrix_inputs[r][c] = matrix_inputs[r][c][:-1]
+                        elif event.unicode.isdigit() or event.unicode in ".-":
+                            matrix_inputs[r][c] += event.unicode
+
+
+                    if show_matrix_size_active:
+                        if event.key == pygame.K_RETURN:
+                            show_matrix_size_active = False
+                        elif event.key == pygame.K_BACKSPACE:
+                            matrix_size_input = matrix_size_input[:-1]
+                        elif event.unicode.isdigit() or event.unicode == ',':
+                            matrix_size_input += event.unicode
+                    elif show_random_range_active:
+                        if event.key == pygame.K_RETURN:
+                            show_random_range_active = False
+                        elif event.key == pygame.K_BACKSPACE:
+                            random_range_input = random_range_input[:-1]
+                        elif event.unicode.isdigit() or event.unicode in ",.-":
+                            random_range_input += event.unicode
+                    elif event.key == pygame.K_RETURN and show_matrix_input:
+                        try:
+                            # Convert filled cells to floats
+                            matrix_values = []
+                            row_lengths = set()
+                            for row in matrix_inputs:
+                                # Count only filled cells
+                                filled_cells = [cell for cell in row if cell.strip()]
+                                if not filled_cells:
+                                    continue  # skip entirely empty rows
+                                float_row = [float(cell) for cell in filled_cells]
+                                matrix_values.append(tuple(float_row))
+                                row_lengths.add(len(float_row))
+
+                            if not matrix_values:
+                                raise ValueError("Matrix cannot be empty")
+
+                            # All rows must have the same number of elements
+                            if len(row_lengths) != 1:
+                                raise ValueError("All rows must have the same number of elements")
+
+                            # Store as tuple-of-tuples
+                            matrix_values = tuple(matrix_values)
+                            animated_vectors.append({'vec': matrix_values, 'progress': 0.0})
+
+                            # Reset input
+                            matrix_inputs = [["" for _ in range(3)] for _ in range(3)]
+                            matrix_active_cell = (-1, -1)
+                            show_matrix_input = True
+
+                        except Exception as e:
+                            print("Invalid matrix input:", e)
+
+            # Toggle matrix input visibility
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_m:
+                show_matrix_input = not show_matrix_input
             if event.type == QUIT:
                 running = False
             elif event.type == KEYDOWN:
@@ -1088,6 +1232,15 @@ def main():
 
             # --- MOUSE ---
             elif event.type == MOUSEBUTTONDOWN:
+                if show_matrix_input:
+                    for r in range(3):
+                        for c in range(3):
+                            x = matrix_start_x + c * (matrix_cell_w + matrix_gap)
+                            y = matrix_start_y + r * (matrix_cell_h + matrix_gap)
+                            rect = pygame.Rect(x, y, matrix_cell_w, matrix_cell_h)
+                            if rect.collidepoint(mx, my):
+                                matrix_active_cell = (r, c)
+                                break
                 if toggle_bg_rect.collidepoint(mx, my):
                     background_dark = not background_dark
                     if background_dark:
@@ -1210,10 +1363,11 @@ def main():
                     radius = base_radius * ortho_scale / 6.5
                     # Single vector
                     if isinstance(vec[0], (int, float)):
-                        draw_circle_2d([vec[0], vec[1], 0], radius=radius, color=sphere_color)
+                        draw_circle_2d([vec[0], vec[1], 0.2], radius=radius, color=sphere_color)
+
                     else:
                         for row in vec:
-                            draw_circle_2d([row[0], row[1], 0], radius=radius, color=sphere_color)
+                            draw_circle_2d([row[0], row[1], 0.2], radius=radius, color=sphere_color)
             else:
                 draw_vectors_2d_animated(all_vectors, dt, ortho_scale=ortho_scale, color = sphere_color)
 
@@ -1272,18 +1426,41 @@ def main():
                 camera_pos = (cam_x, cam_y, cam_z)
                 draw_vectors_3d_animated(all_vectors, dt, camera_pos=camera_pos,color = sphere_color)
 
+        if show_matrix_input:
+            for r in range(3):
+                for c in range(3):
+                    x = matrix_start_x + c * (matrix_cell_w + matrix_gap)
+                    y = matrix_start_y + r * (matrix_cell_h + matrix_gap)
+                    active = (r, c) == matrix_active_cell
+                    draw_input_box_3d(x, y, matrix_cell_w, matrix_cell_h, matrix_inputs[r][c], active)
+
+        #if show_matrix_input:
+         #   for r in range(3):
+          #      for c in range(3):
+           #         x = matrix_start_xx + c * (matrix_cell_w + matrix_gap)
+            #        y = matrix_start_yy + r * (matrix_cell_h + matrix_gap)
+             #       active = (r, c) == matrix_active_cell
+              #      draw_input_box_3d(x, y, matrix_cell_w, matrix_cell_h, matrix_inputs[r][c], active)
+
         draw_dropdown(animated_vectors, selected_vector_index, dropdown_rect, dropdown_open)
         draw_button_2d(*button_rect, "Switch 2D" if not view_2d_mode else "Switch 3D", active=view_2d_mode)
+        # draw_button_rect = (WIDTH - 160, 120, 140, 35)
         draw_button_2d(*draw_button_rect, "Draw Vector", active=False)
-        input_rect = pygame.Rect(WIDTH - 160, 75, 140, 30)
-        draw_input_box_3d(*input_rect, input_text, active=show_input_active)
+        #input_rect = pygame.Rect(WIDTH - 160, 75, 140, 30)
+        #draw_input_box_3d(*input_rect, input_text, active=show_input_active)
         toggle_bg_rect = pygame.Rect(20, HEIGHT - 50, 120, 35)
         label = "Dark Mode" if background_dark else "Light Mode"
         draw_button_2d(toggle_bg_rect.x, toggle_bg_rect.y, toggle_bg_rect.width, toggle_bg_rect.height, label,
                        active=True)
 
-        multiplication_rect = pygame.Rect(WIDTH - 160, 170, 140, 30)  # Adjust position
-        draw_input_box_3d(*multiplication_rect, multiplication_input, active=show_multiplication_active)
+        draw_input_box_3d(matrix_size_rect.x, matrix_size_rect.y, matrix_size_rect.w, matrix_size_rect.h,
+                          matrix_size_input, active=show_matrix_size_active)
+        draw_input_box_3d(random_range_rect.x, random_range_rect.y, random_range_rect.w, random_range_rect.h,
+                          random_range_input, active=show_random_range_active)
+        draw_button_2d(random_button_rect.x, random_button_rect.y, random_button_rect.w, random_button_rect.h,
+                       "Rand", active=True)
+        #multiplication_rect = pygame.Rect(WIDTH - 160, 170, 140, 30)  # Adjust position
+        #draw_input_box_3d(*multiplication_rect, multiplication_input, active=show_multiplication_active)
 
         pygame.display.flip()
 
