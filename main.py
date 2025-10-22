@@ -8,7 +8,7 @@ from OpenGL.GLU import *
 from numpy import array, cross, linalg
 from math import sin, cos, pi
 import ast
-
+import random
 # --- Settings ---
 WIDTH, HEIGHT = 900, 700
 FPS = 60
@@ -1070,8 +1070,8 @@ def main():
                                     parts = random_range_input.split(',')
                                     if len(parts) == 2:
                                         low, high = map(float, parts)
-                                import random
-                                matrix_inputs = [[str(round(random.uniform(low, high), 2)) for _ in range(cols)]
+
+                                matrix_inputs = [[str(random.randint(int(low), int(high))) for _ in range(cols)]
                                                  for _ in range(rows)]
                                 # fill empty cells if smaller than 3×3
                                 for r in range(3 - len(matrix_inputs)):
