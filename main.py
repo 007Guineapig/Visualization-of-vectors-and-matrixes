@@ -103,6 +103,55 @@ def draw_dropdown(vectors, selected_index, rect, open=False):
     glPopMatrix()
     glMatrixMode(GL_MODELVIEW)
 
+def draw_conehead_3d(start, end, color=(1.0, 0.0, 1.0), size=None, camera_pos = None, radius=0.3):
+    start = np.array(start, dtype=float)
+    end = np.array(end, dtype=float)
+
+    # Ak size je None alebo skalár, spravíme skalárny vektor pozdĺž šípky
+    if size is None:
+        dir_vec = end - start
+        length = np.linalg.norm(dir_vec)
+        if length == 0:
+            return
+        size_vec = 0.2 * dir_vec  # 20% vektora
+    elif np.isscalar(size):
+        dir_vec = end - start
+        length = np.linalg.norm(dir_vec)
+        if length == 0:
+            return
+        size_vec = dir_vec / length * size
+    else:
+        # size je už vektor
+        size_vec = np.array(size, dtype=float)
+
+    cone_base_center = end - size_vec
+    dir_vec = size_vec / np.linalg.norm(size_vec)  # jednotkový smer
+
+    glColor3f(*color)
+    glPushMatrix()
+    glTranslatef(*cone_base_center)
+
+    # Rotácia z osi Z na dir_vec
+    up = np.array([0, 0, 1])
+    axis = np.cross(up, dir_vec)
+    axis_len = np.linalg.norm(axis)
+    if axis_len > 1e-6:
+        axis /= axis_len
+        angle = math.degrees(np.arccos(np.clip(np.dot(up, dir_vec), -1.0, 1.0)))
+        glRotatef(angle, *axis)
+    elif dir_vec[2] < 0:
+        glRotatef(180, 1, 0, 0)
+
+    height = np.linalg.norm(size_vec)
+
+    quad = gluNewQuadric()
+    gluQuadricNormals(quad, GLU_SMOOTH)
+    gluCylinder(quad, radius, 0.0, height, 20, 5)
+    gluDeleteQuadric(quad)
+    glPopMatrix()
+
+
+
 def draw_arrowhead_3d(start, end, color=(1, 0, 1), size=0.2, camera_pos=None,radius = 0.05):
     """
     Draws a 3D arrowhead with oval/tube-like lines.
@@ -226,6 +275,7 @@ def draw_input_box_3d(x, y, w, h, text, active=False):
 
 def draw_axes_3D(length=2.0, camera_pos = None):
     # Draw axis lines
+    length = length - 0.5
     glLineWidth(5.0)
     glBegin(GL_LINES)
     # X axis
@@ -244,22 +294,22 @@ def draw_axes_3D(length=2.0, camera_pos = None):
     glLineWidth(2.0)
     # Draw arrowheads
     arrow_size = 1
-
-    draw_arrowhead_3d((0, 0, 0), (length, 0, 0), color=(1, 0, 0),size=arrow_size,camera_pos=camera_pos)
-    draw_arrowhead_3d((0, 0, 0), (0, length, 0), color=(0, 1, 0),size=arrow_size,camera_pos=camera_pos)
-    draw_arrowhead_3d((0, 0, 0), (0, 0, length), color=(0, 0, 1),size=arrow_size,camera_pos=camera_pos)
-    draw_arrowhead_3d((0, 0, 0), (-length, 0, 0), color=(1, 0, 0),size=arrow_size,camera_pos=camera_pos)
-    draw_arrowhead_3d((0, 0, 0), (0, -length, 0), color=(0, 1, 0),size=arrow_size,camera_pos=camera_pos)
-    draw_arrowhead_3d((0, 0, 0), (0, 0, -length), color=(0, 0, 1),size=arrow_size,camera_pos=camera_pos)
+    length = length + 0.5
+    draw_conehead_3d((0, 0, 0), (length, 0, 0), color=(1, 0, 0), size=arrow_size, camera_pos=camera_pos)
+    draw_conehead_3d((0, 0, 0), (0, length, 0), color=(0, 1, 0), size=arrow_size, camera_pos=camera_pos)
+    draw_conehead_3d((0, 0, 0), (0, 0, length), color=(0, 0, 1), size=arrow_size, camera_pos=camera_pos)
+    draw_conehead_3d((0, 0, 0), (-length, 0, 0), color=(1, 0, 0), size=arrow_size, camera_pos=camera_pos)
+    draw_conehead_3d((0, 0, 0), (0, -length, 0), color=(0, 1, 0), size=arrow_size, camera_pos=camera_pos)
+    draw_conehead_3d((0, 0, 0), (0, 0, -length), color=(0, 0, 1), size=arrow_size, camera_pos=camera_pos)
     # Draw axis labels
     label_size = 100  # scale for text
 
-    draw_text_3d("+X", (length + 0.2, 0, 0), color=(1,0,0), font_size=label_size)
-    draw_text_3d("-X", (-length - 0.6, 0, 0), color=(1,0,0), font_size=label_size)
-    draw_text_3d("+Y", (0, length + 0.2, 0), color=(0,1,0), font_size=label_size)
-    draw_text_3d("-Y", (0, -length - 0.6, 0), color=(0,1,0), font_size=label_size)
-    draw_text_3d("+Z", (0, 0, length + 0.2), color=(0,0,1), font_size=label_size)
-    draw_text_3d("-Z", (0, 0, -length - 0.6), color=(0,0,1), font_size=label_size)
+    draw_text_3d("+X1", (length + 0.2, 0, 0), color=(1,0,0), font_size=label_size)
+    draw_text_3d("-X1", (-length - 0.6, 0, 0), color=(1,0,0), font_size=label_size)
+    draw_text_3d("+X2", (0, length + 0.2, 0), color=(0,1,0), font_size=label_size)
+    draw_text_3d("-X2", (0, -length - 0.6, 0), color=(0,1,0), font_size=label_size)
+    draw_text_3d("+X3", (0, 0, length + 0.2), color=(0,0,1), font_size=label_size)
+    draw_text_3d("-X3", (0, 0, -length - 0.6), color=(0,0,1), font_size=label_size)
 
 
 def draw_cylinder_axis(start, end, radius=0.1, slices=16, color=(1.0, 0.0, 0.0)):
@@ -390,8 +440,7 @@ def draw_grid_2d(step=1.0, z=-0.1, max_lines=200):
 
     glEnd()
 
-def draw_oval_line(start, end, radius=0.005, segments=12, color=(1,1,0)):
-
+def draw_oval_line(start, end, radius=0.005, segments=12, color=(1,1,0), alpha=1.0):
     start = array(start, dtype=float)
     end = array(end, dtype=float)
     dir_vec = end - start
@@ -410,10 +459,15 @@ def draw_oval_line(start, end, radius=0.005, segments=12, color=(1,1,0)):
     up_vec = cross(side, dir_vec)
     up_vec /= linalg.norm(up_vec)
 
-    glColor3fv(color)
+    # Enable blending if not already enabled
+    glEnable(GL_BLEND)
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+
+    # Use RGBA color
+    glColor4f(color[0], color[1], color[2], alpha)
 
     glBegin(GL_TRIANGLE_STRIP)
-    for i in range(segments+1):
+    for i in range(segments + 1):
         theta = 2 * pi * i / segments
         offset = radius * cos(theta) * side + radius * sin(theta) * up_vec
         glVertex3fv(start + offset)
@@ -668,41 +722,33 @@ def draw_axes_2d():
     glLoadIdentity()
 
     # Updated world_to_screen function with color
-    def world_to_screen(wx, wy, color=(1,1,1), label=""):
-
+    def world_to_screen(wx, wy, color=(1, 1, 1), label=""):
         sx = (wx - left) / (right - left) * WIDTH
         sy = HEIGHT - (wy - bottom) / (top - bottom) * HEIGHT
-        if label == "X+":
-            sx -= 25
-        if label == "Y-":
-            sy -=25
 
+        # Horizontal offsets for left/right labels
+        if label in ["X1+", "X1-"]:
+            sx += -30 if label == "X1+" else 10
+            sy += 5
+
+        # Vertical and small horizontal offsets for top/bottom labels
+        if label in ["X2+", "X2-"]:
+            sy += -30 if label == "X2-" else 10
+            sx += 5  # shift a little right to avoid overlapping Y-axis
 
         draw_text_2d(label, (sx, sy), color=color, font_size=20)
         return sx, sy
 
     # Draw each axis label with specific color
-    world_to_screen(right, 0, color=(1,0,0), label="X+")   # Red X+
-    world_to_screen(left, 0, color=(1,0,0), label="X-")    # Red X-
-    world_to_screen(0, top, color=(0,1,0), label="Y+")     # Green Y+
-    world_to_screen(0, bottom, color=(0,1,0), label="Y-")  # Green Y-
+    world_to_screen(right, 0, color=(1,0,0), label="X1+")   # Red X+
+    world_to_screen(left, 0, color=(1,0,0), label="X1-")    # Red X-
+    world_to_screen(0, top, color=(0,1,0), label="X2+")     # Green Y+
+    world_to_screen(0, bottom, color=(0,1,0), label="X2-")  # Green Y-
 
     glPopMatrix()
     glMatrixMode(GL_PROJECTION)
     glPopMatrix()
     glMatrixMode(GL_MODELVIEW)
-
-def draw_vectors_3d(vectors, line_width=6, base_arrow_size=0.15):
-    glPushAttrib(GL_LINE_BIT | GL_CURRENT_BIT)
-    glLineWidth(line_width)
-    for v in vectors:
-        vec = list(v) + [0] * (3 - len(v))
-        # Draw the vector line
-        draw_oval_line((0, 0, 0), vec, radius=0.005)
-        # Draw the arrowhead at the tip
-        arrow_size = 0.2
-        draw_arrowhead_3d((0, 0, 0), vec, color=(1, 0, 1), size=arrow_size)
-    glPopAttrib()
 
 def draw_vectors_2d_animated(vectors, dt, line_width=6, arrow_fraction=0.15, speed=2.0, ortho_scale=6.0, color = (1,1,1)):
     glPushAttrib(GL_LINE_BIT | GL_CURRENT_BIT)
@@ -777,94 +823,295 @@ def draw_vectors_2d_animated(vectors, dt, line_width=6, arrow_fraction=0.15, spe
                 glEnd()
     glPopAttrib()
 
-def draw_vectors_3d_animated(vectors, dt, line_width=6, base_arrow_size=0.15, speed=2.0, camera_pos=None, color = (1,1,1)):
+def draw_vectors_3d_animated(vectors, dt, line_width=6, base_arrow_size=0.15,
+                             segment_speed=0.3, final_vector_speed=0.2,
+                             camera_pos=None, color=(1,1,1)):
+    """
+    Bezpečná verzia:
+    - Podporuje 2D aj 3D vektory (chýbajúce Z sa doplní 0).
+    - Stabilné porovnávanie segmentov (body konvertované na tuple).
+    - Korektné inicializácie v['progress'], v['segments'], v['row_progress'], v['row_segments'].
+    """
+
+    # --- Voliteľné: ochráň dt, aby prvý frame po pauze nepreskočil segmentovú fázu ---
+    if dt is None:
+        dt = 0.0
+    else:
+        try:
+            dt = float(dt)
+        except Exception:
+            dt = 0.0
+    max_dt = 1.0 / 30.0
+    dt = min(max(dt, 0.0), max_dt)
+
+    # OpenGL štýl vykreslenia
     glPushAttrib(GL_LINE_BIT | GL_CURRENT_BIT)
     glLineWidth(line_width)
 
-    reference_distance = 2.0  # distance at which the radius is "normal"
-    base_max_radius = 0.02    # max radius at origin
-    min_radius = 0.005        # minimum radius after zoom
+    reference_distance = 2.0
+    base_max_radius = 0.02
+    min_radius = 0.005
 
-    for v in vectors:
-        # Single vector case
-        if isinstance(v['vec'][0], (int, float)):
-            if 'start_vec' not in v:
-                v['start_vec'] = [0.0, 0.0, 0.0]
+    def to_pt(p):
+        """Normalize to tuples for stable comparisons."""
+        # Bezpečne prevedie bod (list/tuple/numpy-like) na 3-prvkový tuple
+        try:
+            # rozbal čo ide...
+            x = float(p[0]) if len(p) > 0 else 0.0
+            y = float(p[1]) if len(p) > 1 else 0.0
+            z = float(p[2]) if len(p) > 2 else 0.0
+        except Exception:
+            x, y, z = 0.0, 0.0, 0.0
+        return (x, y, z)
 
-            v['progress'] = min(v.get('progress', 0.0) + dt * speed, 1.0)
+    def vec3(v):
+        """Coerce any vector-like (x[,y[,z]]) to (x,y,z)."""
+        try:
+            x = float(v[0]) if len(v) > 0 else 0.0
+            y = float(v[1]) if len(v) > 1 else 0.0
+            z = float(v[2]) if len(v) > 2 else 0.0
+        except Exception:
+            # ak by bol v = číslo alebo čokoľvek iné, hrajme na istotu
+            try:
+                x = float(v)
+            except Exception:
+                x = 0.0
+            y = 0.0
+            z = 0.0
+        return x, y, z
 
-            start_vec = list(v['start_vec']) + [0] * (3 - len(v['start_vec']))
-            end_vec = list(v['vec']) + [0] * (3 - len(v['vec']))
-            px, py, pz = [s + (e - s) * v['progress'] for s, e in zip(start_vec, end_vec)]
+    def is_number(x):
+        try:
+            float(x)
+            return True
+        except Exception:
+            return False
 
-            # Compute distance along vector for tapering
-            distance_along_vector = (px ** 2 + py ** 2 + pz ** 2) ** 0.5
-            full_length = sum((e - s) ** 2 for s, e in zip(start_vec, end_vec)) ** 0.5
+    for v in (vectors or []):
+        # Vytiahni farbu pre daný vektor (ak má vlastnú), inak default
+        v_color = v.get('color', color)
 
-            # Base taper: thicker at origin, thinner at tip
-            radius = base_max_radius * (1 - distance_along_vector / full_length) + min_radius
+        # Rozlíš, či ide o single vector alebo maticu vektorov
+        vec_field = v.get('vec', None)
+        if vec_field is None:
+            # nič na kreslenie
+            continue
 
-            # Adjust radius for camera distance
-            if camera_pos is not None:
-                mid_x, mid_y, mid_z = px / 2, py / 2, pz / 2
-                cam_dist = ((camera_pos[0] - mid_x) ** 2 +
-                            (camera_pos[1] - mid_y) ** 2 +
-                            (camera_pos[2] - mid_z) ** 2) ** 0.5
-                radius *= cam_dist / reference_distance
-
-            radius = max(radius, min_radius)
-
-            # Draw line and arrowhead
-            draw_oval_line(start_vec, (px, py, pz), radius=radius,color = color)
-            if v['progress'] >= 1.0:
-                draw_arrowhead_3d(
-                    start_vec, (px, py, pz),
-                    color=v.get('color', color),
-                    size=max(0.5, radius * 8),
-                    camera_pos=camera_pos,
-                    radius=radius
-                )
-
-        # Multiple vectors in a matrix
+        is_single_vector = False
+        if isinstance(vec_field, (list, tuple)):
+            if len(vec_field) > 0 and is_number(vec_field[0]):
+                # napr. [x, y] alebo [x, y, z]
+                is_single_vector = True
+            # inak predpokladáme maticu vektorov (list of list/tuple)
         else:
-            if 'start_vecs' not in v:
-                v['start_vecs'] = [[0.0, 0.0, 0.0] for _ in v['vec']]
-            if 'row_progress' not in v:
-                v['row_progress'] = [0.0] * len(v['vec'])
+            # nie štandardná štruktúra -> preskoč
+            continue
 
-            for i, row in enumerate(v['vec']):
-                v['row_progress'][i] = min(v['row_progress'][i] + dt * speed, 1.0)
-                start_vec = list(v['start_vecs'][i]) + [0] * (3 - len(v['start_vecs'][i]))
-                end_vec = list(row) + [0] * (3 - len(row))
-                px, py, pz = [s + (e - s) * v['row_progress'][i] for s, e in zip(start_vec, end_vec)]
+        # --- Single vector ---
+        if is_single_vector:
+            # Safe init stavov
+            if 'progress' not in v or not isinstance(v['progress'], (int, float)):
+                v['progress'] = 0.0
+            if 'segments' not in v or not isinstance(v['segments'], list):
+                v['segments'] = []
 
-                distance_along_vector = (px ** 2 + py ** 2 + pz ** 2) ** 0.5
-                full_length = sum((e - s) ** 2 for s, e in zip(start_vec, end_vec)) ** 0.5
+            # Posuň progress
+            if v['progress'] < 0.75:
+                v['progress'] = min(v['progress'] + dt * segment_speed, 0.75)
+            else:
+                v['progress'] = min(v['progress'] + dt * final_vector_speed, 1.0)
 
-                radius = base_max_radius * (1 - distance_along_vector / full_length) + min_radius
+            ex, ey, ez = vec3(vec_field)
+            segment_points = [to_pt((ex, 0, 0)), to_pt((ex, ey, 0)), to_pt((ex, ey, ez))]
 
-                if camera_pos is not None:
-                    mid_x, mid_y, mid_z = px / 2, py / 2, pz / 2
-                    cam_dist = ((camera_pos[0] - mid_x) ** 2 +
-                                (camera_pos[1] - mid_y) ** 2 +
-                                (camera_pos[2] - mid_z) ** 2) ** 0.5
-                    radius *= cam_dist / reference_distance
+            # Dokresli už hotové segmenty (helpers)
+            for s, e in v['segments']:
+                radius = compute_radius(s, e, base_max_radius, min_radius, camera_pos, reference_distance)
+                draw_oval_line(s, e, radius=radius, color=v_color,alpha =0.5)
 
-                radius = max(radius, min_radius)
-                draw_oval_line(start_vec, (px, py, pz), radius=radius)
+            # Aktuálny segment (X/Y/Z)
+            if v['progress'] < 0.75:
+                local_p = v['progress'] / 0.75
+                phase = local_p * 3.0
+                seg_index = int(min(phase, 2.999))  # 0,1,2
+                seg_progress = phase - seg_index
 
-                if v['row_progress'][i] >= 1.0:
-                    draw_arrowhead_3d(
-                        start_vec, (px, py, pz),
-                        color=v.get('color', (1, 0, 1)),
-                        size=max(0.5, radius * 8),
-                        camera_pos=camera_pos,
-                        radius=radius
-                    )
+                seg_start = to_pt((0, 0, 0)) if seg_index == 0 else segment_points[seg_index - 1]
+                seg_end = segment_points[seg_index]
+                px, py, pz = [s + (e - s) * seg_progress for s, e in zip(seg_start, seg_end)]
+
+                radius = compute_radius(seg_start, (px, py, pz), base_max_radius, min_radius, camera_pos, reference_distance)
+                glDepthMask(GL_FALSE)
+                draw_oval_line(seg_start, (px, py, pz), radius=radius, color=v_color,alpha =0.5)
+                glDepthMask(GL_TRUE)
+                # Ulož hotové segmenty pred aktuálnym
+                for i in range(seg_index):
+                    s = to_pt((0, 0, 0)) if i == 0 else segment_points[i - 1]
+                    e = segment_points[i]
+                    if (s, e) not in v['segments']:
+                        v['segments'].append((s, e))
+
+            # Finálna fáza – kresli celý vektor z (0,0,0) -> (ex,ey,ez)
+            else:
+                # Uisti sa, že posledný Z helper je evidovaný len vtedy, ak má zmysel (tu môže byť ez == 0, nevadí)
+                z_seg = (segment_points[1], segment_points[2])
+                if z_seg not in v['segments']:
+                    v['segments'].append(z_seg)
+
+                t = (v['progress'] - 0.75) / 0.25  # 0→1
+                px, py, pz = ex * t, ey * t, ez * t
+
+                radius = compute_radius((0, 0, 0), (px, py, pz), base_max_radius, min_radius, camera_pos, reference_distance)
+                draw_oval_line((0, 0, 0), (px, py, pz), radius=radius, color=v_color)
+                if v['progress'] >= 1.0:
+                    # Šípka sa dá kresliť aj v 2D (z=0) – stále je to 3D šípka v rovine Z=0
+                    draw_conehead_3d((0, 0, 0), (ex, ey, ez),
+                                     color=(1.0, 0.4, 0.7),
+                                     size=max(0.9, radius * 8),
+                                     camera_pos=camera_pos,
+                                     radius=0.3)
+
+        # --- Matrix of vectors ---
+        else:
+            rows = vec_field if isinstance(vec_field, (list, tuple)) else []
+            n = len(rows)
+
+            # Safe init radových polí s korektnou dĺžkou
+            if 'row_progress' not in v or not isinstance(v['row_progress'], list) or len(v['row_progress']) != n:
+                v['row_progress'] = [0.0] * n
+            if 'row_segments' not in v or not isinstance(v['row_segments'], list) or len(v['row_segments']) != n:
+                v['row_segments'] = [[] for _ in range(n)]
+
+            for i, row in enumerate(rows):
+                ex, ey, ez = vec3(row)
+
+                # Posúvanie progressu po riadkoch
+                if v['row_progress'][i] < 0.75:
+                    v['row_progress'][i] = min(v['row_progress'][i] + dt * segment_speed, 0.75)
+                else:
+                    v['row_progress'][i] = min(v['row_progress'][i] + dt * final_vector_speed, 1.0)
+
+                segment_points = [to_pt((ex, 0, 0)), to_pt((ex, ey, 0)), to_pt((ex, ey, ez))]
+
+                # Už hotové segmenty
+                for s, e in v['row_segments'][i]:
+                    radius = compute_radius(s, e, base_max_radius, min_radius, camera_pos, reference_distance)
+                    draw_oval_line(s, e, radius=radius, color=v_color,alpha =0.5)
+
+                # Aktuálny segment
+                if v['row_progress'][i] < 0.75:
+                    local_p = v['row_progress'][i] / 0.75
+                    phase = local_p * 3.0
+                    seg_index = int(min(phase, 2.999))
+                    seg_progress = phase - seg_index
+
+                    seg_start = to_pt((0, 0, 0)) if seg_index == 0 else segment_points[seg_index - 1]
+                    seg_end = segment_points[seg_index]
+                    px, py, pz = [s + (e - s) * seg_progress for s, e in zip(seg_start, seg_end)]
+
+                    radius = compute_radius(seg_start, (px, py, pz), base_max_radius, min_radius, camera_pos, reference_distance)
+                    draw_oval_line(seg_start, (px, py, pz), radius=radius, color=v_color,alpha =0.5)
+
+                    # Ulož hotové pred aktuálnym
+                    for j in range(seg_index):
+                        s = to_pt((0, 0, 0)) if j == 0 else segment_points[j - 1]
+                        e = segment_points[j]
+                        if (s, e) not in v['row_segments'][i]:
+                            v['row_segments'][i].append((s, e))
+
+                # Finálna fáza
+                else:
+                    # ponechaj posledný Z helper (ak ez=0, stále ok – je to rovnaký bod)
+                    z_seg = (segment_points[1], segment_points[2])
+                    if z_seg not in v['row_segments'][i]:
+                        v['row_segments'][i].append(z_seg)
+
+                    t = (v['row_progress'][i] - 0.75) / 0.25
+                    px, py, pz = ex * t, ey * t, ez * t
+
+                    # pôvodný bod finálnej čiary
+                    vec = np.array([ex * t, ey * t, ez * t])
+                    length = np.linalg.norm(vec)
+                    delta = 0.5  # o koľko skrátime
+
+                    if length > delta:
+                        vec_short = vec * (length - delta) / length
+                    else:
+                        vec_short = np.zeros(3)
+
+                    px, py, pz = vec_short
+
+
+                    radius = compute_radius((0, 0, 0), (px, py, pz), base_max_radius, min_radius, camera_pos, reference_distance)
+                    draw_oval_line((0, 0, 0), (px, py, pz), radius=radius, color=v_color)
+
+                    if v['row_progress'][i] >= 1.0:
+                        draw_conehead_3d((0, 0, 0), (ex, ey, ez),
+                                         color=(1.0, 0.4, 0.7),
+                                         size=max(0.9, radius * 8),
+                                         camera_pos=camera_pos,
+                                         radius=0.3)
 
     glPopAttrib()
 
+def compute_radius(start, end, base_max_radius, min_radius, camera_pos, reference_distance):
+    # 1) ŽIADNY tapering – všetky segmenty (X, Y, Z) začínajú rovnako hrubé
+    radius = float(base_max_radius)
+
+    # 2) Zachovaj tvoje overené zoom-škálovanie: cam_dist/reference_distance
+    if camera_pos and reference_distance and reference_distance > 0:
+        mid = ((start[0] + end[0]) * 0.5,
+               (start[1] + end[1]) * 0.5,
+               (start[2] + end[2]) * 0.5)
+        cam_dist = math.sqrt((camera_pos[0] - mid[0])**2 +
+                             (camera_pos[1] - mid[1])**2 +
+                             (camera_pos[2] - mid[2])**2)
+        cam_dist = max(cam_dist, 1e-6)
+
+        # DÔLEŽITÉ: rovnaký smer ako v tvojej verzii (blízko -> tenšie)
+        scale = cam_dist / reference_distance
+
+        # Jemný clamp, aby extrémy zoomu nevystrelili/nezmizli (prispôsob si)
+        scale = max(0.5, min(2.0, scale))
+
+        radius *= scale
+
+    # 3) Dolný limit
+    return max(radius, float(min_radius))
+# Helper function for radius
+####DONT DELETE THIS BELOW###
+def compute_radius1(start, end, base_max_radius, min_radius, camera_pos, reference_distance):
+    dist = sum((c)**2 for c in end)**0.5
+    full_length = sum((ee - ss)**2 for ss, ee in zip(start, end))**0.5
+    if full_length == 0:
+        radius = base_max_radius
+    else:
+        radius = base_max_radius*(1 - dist/full_length) + min_radius
+    if camera_pos:
+        mid = [(s+e)/2 for s,e in zip(start,end)]
+        cam_dist = sum((camera_pos[i]-mid[i])**2 for i in range(3))**0.5
+        radius *= cam_dist/reference_distance
+    return max(radius,min_radius)
+
+
 def reset_vector_animation(vectors):
+    for v in vectors:
+        # single vector
+        v['progress'] = 0.0
+        if 'segments' in v:
+            v['segments'].clear()
+
+        # matrix of vectors
+        if 'row_progress' in v:
+            # nastav nuly pre každú riadkovú animáciu
+            v['row_progress'] = [0.0] * len(v['row_progress'])
+        if 'row_segments' in v:
+            # vyčisti každý zoznam segmentov v riadkoch
+            for lst in v['row_segments']:
+                lst.clear()
+
+
+def reset_vector_animation1(vectors):
     for v in vectors:
         v['progress'] = 0.0
         if 'row_progress' in v:
@@ -1030,6 +1277,7 @@ def main():
                     ]
                 else:  # single vector
                     v['vec'] = [c + d for c, d in zip(list(v['vec']), v['delta'])]
+
                 v['frames_left'] -= 1
 
                 # Snap to clean numbers when animation finishes
@@ -1434,14 +1682,6 @@ def main():
                     active = (r, c) == matrix_active_cell
                     draw_input_box_3d(x, y, matrix_cell_w, matrix_cell_h, matrix_inputs[r][c], active)
 
-        #if show_matrix_input:
-         #   for r in range(3):
-          #      for c in range(3):
-           #         x = matrix_start_xx + c * (matrix_cell_w + matrix_gap)
-            #        y = matrix_start_yy + r * (matrix_cell_h + matrix_gap)
-             #       active = (r, c) == matrix_active_cell
-              #      draw_input_box_3d(x, y, matrix_cell_w, matrix_cell_h, matrix_inputs[r][c], active)
-
         draw_dropdown(animated_vectors, selected_vector_index, dropdown_rect, dropdown_open)
         draw_button_2d(*button_rect, "Switch 2D" if not view_2d_mode else "Switch 3D", active=view_2d_mode)
         # draw_button_rect = (WIDTH - 160, 120, 140, 35)
@@ -1459,8 +1699,9 @@ def main():
                           random_range_input, active=show_random_range_active)
         draw_button_2d(random_button_rect.x, random_button_rect.y, random_button_rect.w, random_button_rect.h,
                        "Rand", active=True)
-        #multiplication_rect = pygame.Rect(WIDTH - 160, 170, 140, 30)  # Adjust position
-        #draw_input_box_3d(*multiplication_rect, multiplication_input, active=show_multiplication_active)
+
+        multiplication_rect = pygame.Rect(WIDTH - 160, 280, 140, 30)  # Adjust position
+        draw_input_box_3d(*multiplication_rect, multiplication_input, active=show_multiplication_active)
 
         pygame.display.flip()
 

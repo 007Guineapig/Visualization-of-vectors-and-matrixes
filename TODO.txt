@@ -1,0 +1,22 @@
+
+MATICE
+-menu vkladania matíc - mxn okienok na vloženie prvkov (ako matrix calculator), možno nejaké checkboxy s nastaveniamy: ones, zeroes, random range
+-vektory matice sú jej stĺpce, nie riadky
+-farebne odlišovať body/stĺpce matice - napr. opacita 50%
+
+VEKTORY
+-operácie s vektormi (sčítavanie, násobenie, ...)
+-násobenie matíc, vektorov, sčítavanie, rozklad matíc
+
+ZOBRAZENIE
+-podpora viacerých resolutionov
+-posunúť labely s názvom osí (po premenovaní na x1, x2, x3)
+-žiadny text, zápisy vzorcom
+-mapovacia funkcia podľa max veľkosti vektora do súradnicovej sústavy (normovanie zobrazenia vrcholov miesto zväčšovania celej súradnicovej sústavy)
+-žiadne čísla na osi (toggle zobrazovania kolmíc na osi a súradnice vektorov)
+-zobrazovať vektory cez animácie (napr. [x,y,z] ako [0,0,0] -> [x,0,0] -> [x,y,0] -> [x,y,z]; posúvať interval <0,x_2> (nemám poznačené, čo tým bolo myslené, môžeme sa spýtať))
+-vektory majú trojuholníky miesto šípok
+
+PROJEKT
+-potenciálne využiť marimo notebook
+-export do .svg
