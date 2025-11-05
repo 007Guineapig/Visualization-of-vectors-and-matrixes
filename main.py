@@ -202,7 +202,7 @@ def draw_sphere(position, radius=0.1, slices=12, stacks=12, color=(1,0,1)):
     gluDeleteQuadric(quad)
     glPopMatrix()
 
-def draw_input_box_3d(x, y, w, h, text, active=False):
+def draw_input_box_3d(x, y, w, h, text, active=False,fill_color = (0.7,0.7,0.7),fill_color_outline = (0,0,0)):
     # Switch to 2D
     glMatrixMode(GL_PROJECTION)
     glPushMatrix()
@@ -217,14 +217,20 @@ def draw_input_box_3d(x, y, w, h, text, active=False):
 
     # Draw rectangle
     glColor3f(1, 1, 1) if not active else glColor3f(0.9, 0.9, 1)
+    r, g, b = fill_color
+    if active:
+        # Slightly brighten the active cell
+        r, g, b = min(r + 0.2, 1.0), min(g + 0.2, 1.0), min(b + 0.2, 1.0)
+    glColor3f(r, g, b)
     glBegin(GL_QUADS)
     glVertex2f(x, y)
     glVertex2f(x + w, y)
     glVertex2f(x + w, y + h)
     glVertex2f(x, y + h)
     glEnd()
-
-    glColor3f(0, 0, 0)
+    r,g,b = fill_color_outline
+    glLineWidth(4.0)
+    glColor3f(r, g,b)
     glBegin(GL_LINE_LOOP)
     glVertex2f(x, y)
     glVertex2f(x + w, y)
@@ -1362,23 +1368,37 @@ def main():
                     elif event.key == pygame.K_RETURN and show_matrix_input:
                         try:
                             # Convert filled cells to floats
-                            matrix_values = []
-                            row_lengths = set()
-                            for row in matrix_inputs:
+                            #matrix_values = []
+                            #row_lengths = set()
+                            #for row in matrix_inputs:
                                 # Count only filled cells
-                                filled_cells = [cell for cell in row if cell.strip()]
-                                if not filled_cells:
-                                    continue  # skip entirely empty rows
-                                float_row = [float(cell) for cell in filled_cells]
-                                matrix_values.append(tuple(float_row))
-                                row_lengths.add(len(float_row))
+                                #filled_cells = [cell for cell in row if cell.strip()]
+                                #if not filled_cells:
+                            #    continue  # skip entirely empty rows
+                                #float_row = [float(cell) for cell in filled_cells]
+                                #matrix_values.append(tuple(float_row))
+                            # row_lengths.add(len(float_row))
+
+                            cols = len(matrix_inputs[0])
+                            rows = len(matrix_inputs)
+                            matrix_values = []
+                            col_lengths = set()
+                            for c in range(cols):
+                                column_cells = [matrix_inputs[r][c] for r in range(rows) if matrix_inputs[r][c].strip()]
+                                if not column_cells:
+                                    continue  # skip empty column
+                                float_col = [float(cell) for cell in column_cells]
+                                matrix_values.append(tuple(float_col))
+                                col_lengths.add(len(float_col))
 
                             if not matrix_values:
                                 raise ValueError("Matrix cannot be empty")
 
                             # All rows must have the same number of elements
-                            if len(row_lengths) != 1:
-                                raise ValueError("All rows must have the same number of elements")
+                            #if len(row_lengths) != 1:
+                            #    raise ValueError("All rows must have the same number of elements")
+                            if len(col_lengths) != 1:
+                                raise ValueError("All columns must have the same number of filled cells")
 
                             # Store as tuple-of-tuples
                             matrix_values = tuple(matrix_values)
@@ -1680,7 +1700,38 @@ def main():
                     x = matrix_start_x + c * (matrix_cell_w + matrix_gap)
                     y = matrix_start_y + r * (matrix_cell_h + matrix_gap)
                     active = (r, c) == matrix_active_cell
-                    draw_input_box_3d(x, y, matrix_cell_w, matrix_cell_h, matrix_inputs[r][c], active)
+                    # assign color per column
+
+                    if c == 0:
+                        col_color_outline = (1.0, 0.0, 1.0)
+                    elif c == 1:
+                        col_color_outline = (0.0, 1.0, 1.0)
+                    elif c == 2:
+                        col_color_outline = (1.0, 1.0, 0.0)
+
+                    if r == 0:
+                        col_color = (0.65, 0.25, 0.25)  # jemne svetlejšia červenohnedá
+                    elif r == 1:
+                        col_color = (0.2, 0.55, 0.2)  # tlmená, ale sviežejšia olivovozelená
+                    elif r == 2:
+                        col_color = (0.2, 0.4, 0.6)  # svetlejšia modrosivá
+
+                    # if r == 0:
+                    #     col_color_outline = (1,0,0)#(0.65, 0.25, 0.25)
+                    # elif r == 1:
+
+                    #     col_color_outline = (0,1,0)#(0.2, 0.55, 0.2)
+                    #  elif r == 2:
+
+                    #      col_color_outline = (0,0,1)#(0.2, 0.4, 0.6)
+
+                    # if c == 0:
+                    #     col_color = (1, 0.0, 1.0)  # jemne svetlejšia červenohnedá
+                    # if c == 1:
+                    #     col_color = (0.0, 1.0, 1.0)  # tlmená, ale sviežejšia olivovozelená
+                    # if c == 2:
+                    #     col_color =(1.0, 1.0, 0.0)  # svetlejšia modrosivá
+                    draw_input_box_3d(x, y, matrix_cell_w, matrix_cell_h, matrix_inputs[r][c], active,fill_color = col_color,fill_color_outline = col_color_outline)
 
         draw_dropdown(animated_vectors, selected_vector_index, dropdown_rect, dropdown_open)
         draw_button_2d(*button_rect, "Switch 2D" if not view_2d_mode else "Switch 3D", active=view_2d_mode)
