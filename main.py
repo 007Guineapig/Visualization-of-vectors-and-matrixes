@@ -1349,9 +1349,9 @@ def main():
     saved_baza = []  # mimo hlavného loopu, globálne
 
 
-    matrix_size_rect = pygame.Rect(WIDTH - 210, 240, 60, 30)   # left of matrix input
-    random_range_rect = pygame.Rect(WIDTH - 140, 240, 60, 30)  # next to size input
-    random_button_rect = pygame.Rect(WIDTH - 70, 240, 60, 30) # next to random range inpu
+    matrix_size_rect = pygame.Rect(WIDTH - 210, 290, 60, 30)   # left of matrix input
+    random_range_rect = pygame.Rect(WIDTH - 140, 290, 60, 30)  # next to size input
+    random_button_rect = pygame.Rect(WIDTH - 70, 290, 60, 30) # next to random range inpu
 
 
 
@@ -1359,7 +1359,9 @@ def main():
     multiplication_input = ""  # stores the text typed in multiplication input
     show_multiplication_active = False  # tracks if multiplication input is active
     background_dark = True
-    multiplication_rect = pygame.Rect(WIDTH - 160, 120, 140, 30)  # position of new input box
+
+    multiplication_rect = pygame.Rect(WIDTH - 160, 330, 140, 30)
+    # position of new input box
 
     global input_text, show_input_active, selected_vector_index  # <--- add this
     pending_vector = None
@@ -1370,8 +1372,8 @@ def main():
     matrix_active_cell = (-1, -1)  # (row, col)
     matrix_cell_w, matrix_cell_h = 40, 30
     matrix_gap = 5
-    matrix_start_x, matrix_start_y = WIDTH - 155, 130  # adjust position
-    matrix_start_xx, matrix_start_yy = WIDTH - 155, 300  # adjust position
+    matrix_start_x, matrix_start_y = WIDTH - 155, 170  # adjust position
+    #matrix_start_xx, matrix_start_yy = WIDTH - 155, 300  # adjust position
     show_matrix_input = True  # toggle with a key (M)
 
     def get_matrix_values():
@@ -1423,7 +1425,7 @@ def main():
     clock = pygame.time.Clock()
     view_2d_mode = True
     button_rect = (WIDTH - 160, 30, 140, 35)
-    draw_button_rect = (WIDTH - 160, 75, 140, 35)
+    draw_button_rect = (WIDTH - 160, 120, 140, 35)
 
     grid_mode = 0  # 0 = none, 1 = planes, 2 = grid
     show_axes = True
@@ -2077,7 +2079,7 @@ def main():
         draw_button_2d(random_button_rect.x, random_button_rect.y, random_button_rect.w, random_button_rect.h,
                        "Rand", active=True)
 
-        multiplication_rect = pygame.Rect(WIDTH - 160, 280, 140, 30)  # Adjust position
+        # Adjust position
         draw_input_box_3d(*multiplication_rect, multiplication_input, active=show_multiplication_active)
 
         pygame.display.flip()
