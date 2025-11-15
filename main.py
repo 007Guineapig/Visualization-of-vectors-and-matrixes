@@ -12,7 +12,8 @@ import random
 from utils import *
 from vectorAnimations import *
 # --- Settings ---
-WIDTH, HEIGHT = 900, 700
+#WIDTH, HEIGHT = 900, 700
+#WIDTH, HEIGHT = 900, 700
 FPS = 60
 LENGTH_XYZ = 10.
 
@@ -1024,6 +1025,7 @@ def draw_circle_2d(position, radius=0.1, segments=24, color=(1,1,0)):
 
 
 def draw_button_2d(x, y, w, h, label, active=False):
+    glDisable(GL_DEPTH_TEST)
     # --- Set up orthographic 2D projection ---
     glMatrixMode(GL_PROJECTION)
     glPushMatrix()
@@ -1092,6 +1094,7 @@ def draw_button_2d(x, y, w, h, label, active=False):
     glMatrixMode(GL_PROJECTION)
     glPopMatrix()
     glMatrixMode(GL_MODELVIEW)
+    glEnable(GL_DEPTH_TEST)
 
 def draw_input_box(screen, text, rect):
     pygame.draw.rect(screen, (255, 255, 255), rect)
@@ -1337,6 +1340,9 @@ def draw_parenthesis(x, y, height, left=True, color=(1, 1, 1), thickness=3):
     glMatrixMode(GL_MODELVIEW)
 
 
+
+
+
 def main():
     view_2d_mode = True  # alebo False
     startup_screen = False
@@ -1345,13 +1351,9 @@ def main():
     random_range_input = ""
     show_matrix_size_active = False
     show_random_range_active = False
+    global WIDTH, HEIGHT
 
-    saved_baza = []  # mimo hlavného loopu, globálne
 
-
-    matrix_size_rect = pygame.Rect(WIDTH - 210, 290, 60, 30)   # left of matrix input
-    random_range_rect = pygame.Rect(WIDTH - 140, 290, 60, 30)  # next to size input
-    random_button_rect = pygame.Rect(WIDTH - 70, 290, 60, 30) # next to random range inpu
 
 
 
@@ -1360,7 +1362,6 @@ def main():
     show_multiplication_active = False  # tracks if multiplication input is active
     background_dark = True
 
-    multiplication_rect = pygame.Rect(WIDTH - 160, 330, 140, 30)
     # position of new input box
 
     global input_text, show_input_active, selected_vector_index  # <--- add this
@@ -1372,7 +1373,7 @@ def main():
     matrix_active_cell = (-1, -1)  # (row, col)
     matrix_cell_w, matrix_cell_h = 40, 30
     matrix_gap = 5
-    matrix_start_x, matrix_start_y = WIDTH - 155, 170  # adjust position
+
     #matrix_start_xx, matrix_start_yy = WIDTH - 155, 300  # adjust position
     show_matrix_input = True  # toggle with a key (M)
 
@@ -1395,10 +1396,22 @@ def main():
     pygame.display.gl_set_attribute(pygame.GL_MULTISAMPLEBUFFERS, 1)
     pygame.display.gl_set_attribute(pygame.GL_MULTISAMPLESAMPLES, 4)
 
-    # --- Create the OpenGL window ---
-    screen = pygame.display.set_mode((WIDTH, HEIGHT), DOUBLEBUF | OPENGL)
-    pygame.display.set_caption("XYZ axes — mouse control (Antialiasing ON)")
+    screen = pygame.display.set_mode((900, 700), DOUBLEBUF | OPENGL | RESIZABLE)
+    WIDTH = screen.get_width()
+    HEIGHT = screen.get_height()
+    saved_baza = []  # mimo hlavného loopu, globálne
 
+    # --- Create the OpenGL window ---
+    #screen = pygame.display.set_mode((WIDTH, HEIGHT), DOUBLEBUF | OPENGL)
+
+    pygame.display.set_caption("XYZ axes — mouse control (Antialiasing ON)")
+    matrix_start_x, matrix_start_y = screen.get_width() - 155, 170  # adjust position
+
+
+    multiplication_rect = pygame.Rect(WIDTH - 160, 330, 140, 30)
+    matrix_size_rect = pygame.Rect(WIDTH - 210, 290, 60, 30)   # left of matrix input
+    random_range_rect = pygame.Rect(WIDTH - 140, 290, 60, 30)  # next to size input
+    random_button_rect = pygame.Rect(WIDTH - 70, 290, 60, 30) # next to random range inpu
     # --- Enable depth and smoothing ---
     glEnable(GL_DEPTH_TEST)
     # --- Antialiasing setup ---
@@ -1409,7 +1422,7 @@ def main():
     glHint(GL_LINE_SMOOTH_HINT, GL_NICEST)
     glHint(GL_POLYGON_SMOOTH_HINT, GL_NICEST)
 
-    glClearColor(0.0, 0.0, 0.0, 1.0)
+    #glClearColor(0.0, 0.0, 0.0, 1.0)
     #glClearColor(1.0, 1.0, 1.0, 1.0)
 
     distance, azimuth, elevation = 7.0, 45.0, 25.0
@@ -1424,8 +1437,8 @@ def main():
 
     clock = pygame.time.Clock()
     view_2d_mode = True
-    button_rect = (WIDTH - 160, 30, 140, 35)
-    draw_button_rect = (WIDTH - 160, 120, 140, 35)
+    button_rect = (screen.get_width() - 160, 30, 140, 35)
+    draw_button_rect = (screen.get_width() - 160, 120, 140, 35)
 
     grid_mode = 0  # 0 = none, 1 = planes, 2 = grid
     show_axes = True
@@ -1433,64 +1446,92 @@ def main():
     animated_vectors = []
 
     is_not_baza = True
-
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
     while running:
 
 
 
         dt = clock.tick(FPS) / 1000.0
 
-        if startup_screen:
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-            glMatrixMode(GL_PROJECTION)
-            glLoadIdentity()
-            glOrtho(0, WIDTH, HEIGHT, 0, -1, 1)
-            glMatrixMode(GL_MODELVIEW)
-            glLoadIdentity()
-            glDisable(GL_DEPTH_TEST)
-            # Pozadie
-            glBegin(GL_QUADS)
-            glColor3f(0.1, 0.1, 0.1)
-            glVertex2f(0, 0)
-            glVertex2f(WIDTH, 0)
-            glVertex2f(WIDTH, HEIGHT)
-            glVertex2f(0, HEIGHT)
-            glEnd()
+        while startup_screen:
+            dt = clock.tick(FPS) / 1000.0
 
-            # Tlačidlá
-            button_w, button_h = 200, 60
-            button_2d_rect = pygame.Rect(WIDTH // 2 - button_w - 20, HEIGHT // 2 - button_h // 2, button_w, button_h)
-            button_3d_rect = pygame.Rect(WIDTH // 2 + 20, HEIGHT // 2 - button_h // 2, button_w, button_h)
-
-
-
-
-            draw_button_2d(button_2d_rect.x, button_2d_rect.y, button_2d_rect.w, button_2d_rect.h, "2D režim",
-                           active=True)
-
-            draw_button_2d(button_3d_rect.x, button_3d_rect.y, button_3d_rect.w, button_3d_rect.h, "3D režim",
-                           active=True)
-            glEnable(GL_DEPTH_TEST)
-            pygame.display.flip()
-            # Spracovanie udalostí
+            # --- 1) event handling (use event.pos for clicks) ---
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
+                    startup_screen = False
+                    break
+
+                elif event.type == pygame.VIDEORESIZE:
+                    WIDTH, HEIGHT = event.w, event.h
+                    screen = pygame.display.set_mode((WIDTH, HEIGHT), DOUBLEBUF | OPENGL | RESIZABLE)
+                    glViewport(0, 0, WIDTH, HEIGHT)
+
                 elif event.type == pygame.MOUSEBUTTONDOWN:
-                    mx, my = pygame.mouse.get_pos()
-                    if button_2d_rect.collidepoint(mx, my):
+                    mx, my = event.pos
+                    # compute rects here or ensure they exist before event loop
+                    if toggle_bg_rect.collidepoint(mx, my):
+                        background_dark = not background_dark
+                    elif button_2d_rect.collidepoint(mx, my):
                         view_2d_mode = True
                         startup_screen = False
                     elif button_3d_rect.collidepoint(mx, my):
                         view_2d_mode = False
                         startup_screen = False
 
+            if not startup_screen:
+                break
 
-            continue  #
+            # --- 2) projection / UI rects recalculation (depends on WIDTH/HEIGHT) ---
+            glMatrixMode(GL_PROJECTION)
+            glLoadIdentity()
+            glOrtho(0, WIDTH, HEIGHT, 0, -1, 1)
+            glMatrixMode(GL_MODELVIEW)
+            glLoadIdentity()
+
+            button_w, button_h = 200, 60
+            button_2d_rect = pygame.Rect(WIDTH // 2 - button_w - 20, HEIGHT // 2 - button_h // 2, button_w, button_h)
+            button_3d_rect = pygame.Rect(WIDTH // 2 + 20, HEIGHT // 2 - button_h // 2, button_w, button_h)
+            toggle_bg_rect = pygame.Rect(20, HEIGHT - 50, 120, 35)
+
+            # --- 3) set clear color based on state and clear ONCE ---
+            if background_dark:
+                glClearColor(0.0, 0.0, 0.0, 1.0)
+                # optional: use a slightly different quad color if you draw it
+                bg_quad_color = (0.05, 0.05, 0.05)
+            else:
+                glClearColor(1.0, 1.0, 1.0, 1.0)
+                bg_quad_color = (0.95, 0.95, 0.95)
+
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+
+            # --- 4) draw background quad IF you really need it,
+            #      but make its color depend on background_dark (or remove it) ---
+            glColor3f(*bg_quad_color)
+            glBegin(GL_QUADS)
+            glVertex2f(0, 0)
+            glVertex2f(WIDTH, 0)
+            glVertex2f(WIDTH, HEIGHT)
+            glVertex2f(0, HEIGHT)
+            glEnd()
+
+            # --- 5) draw UI (buttons) using your draw_button_2d helpers ---
+            draw_button_2d(button_2d_rect.x, button_2d_rect.y, button_2d_rect.w, button_2d_rect.h, "2D režim",
+                           active=True)
+            draw_button_2d(button_3d_rect.x, button_3d_rect.y, button_3d_rect.w, button_3d_rect.h, "3D režim",
+                           active=True)
+            label = "Dark Mode" if background_dark else "Light Mode"
+            draw_button_2d(toggle_bg_rect.x, toggle_bg_rect.y, toggle_bg_rect.width, toggle_bg_rect.height, label,
+                           active=True)
+
+            # --- 6) present once ---
+            pygame.display.flip()
 
 
 
-        if is_not_baza:
+
+        while is_not_baza:
 
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
             glMatrixMode(GL_PROJECTION)
@@ -1526,7 +1567,14 @@ def main():
                             if rect.collidepoint(mx, my):
                                 matrix_active_cell = (r, c)
                                 break
-
+                elif event.type == pygame.VIDEORESIZE:
+                    WIDTH, HEIGHT = event.w, event.h
+                    screen = pygame.display.set_mode((WIDTH, HEIGHT), DOUBLEBUF | OPENGL | RESIZABLE)
+                    glViewport(0, 0, WIDTH, HEIGHT)
+                elif event.type == QUIT:
+                    is_not_baza = False
+                    running = False
+                    return
                 elif event.type == pygame.KEYDOWN:
                     if matrix_active_cell != (-1, -1):
                         r, c = matrix_active_cell
@@ -1564,6 +1612,7 @@ def main():
                                         continue
 
                                 # Uloženie do pola 'saved_baza'
+
                                 saved_baza.append(tuple(matrix_values))
                                 print(f"Baza uložená: {tuple(matrix_values)}")
 
@@ -1589,6 +1638,58 @@ def main():
 
                     draw_input_box_3d(x, y, matrix_cell_w, matrix_cell_h, matrix_inputs[r][c], active,
                                       fill_color=col_color, fill_color_outline=col_color_outline_current)
+
+            #glDisable(GL_DEPTH_TEST)
+            button_placement = pygame.Rect(35, 60, button_w, button_h)
+            if background_dark:
+                color1 = (1,1,1)
+            else:
+                color1 = (0,0,0)
+
+            draw_text_2d("Vektorove operácie: ",
+                         (button_placement.x-15, button_placement.y - 40),
+                         color=color1,
+                         font_size=30)
+
+            draw_button_2d(button_placement.x, button_placement.y, button_placement.w, button_placement.h, "Sčítania",
+                           active=True)
+            #glDisable(GL_DEPTH_TEST)
+            draw_button_2d(button_placement.x, button_placement.y + button_h + 5, button_placement.w, button_placement.h, "Odčitanie",
+                           active=True)
+            #glDisable(GL_DEPTH_TEST)
+            draw_button_2d(button_placement.x, button_placement.y + button_h*2 + 10, button_placement.w, button_placement.h,  "Násobenie Konštantou",
+                           active=True)
+            #glDisable(GL_DEPTH_TEST)
+            draw_button_2d(button_placement.x, button_placement.y + button_h*3 + 15, button_placement.w, button_placement.h,
+                           "Lineárna kombinácia",
+                           active=True)
+
+            button_placement = pygame.Rect(35, 380, button_w, button_h)
+            draw_text_2d("Maticove operácie: ",
+                         (button_placement.x - 15, button_placement.y - 40),
+                         color=color1,
+                         font_size=30)
+
+
+            draw_button_2d(button_placement.x, button_placement.y, button_placement.w, button_placement.h, "Sčítania",
+                           active=True)
+            # glDisable(GL_DEPTH_TEST)
+            draw_button_2d(button_placement.x, button_placement.y + button_h + 5, button_placement.w,
+                           button_placement.h, "Odčitanie",
+                           active=True)
+            # glDisable(GL_DEPTH_TEST)
+            draw_button_2d(button_placement.x, button_placement.y + button_h * 2 + 10, button_placement.w,
+                           button_placement.h, "Násobenie Konštantou",
+                           active=True)
+            # glDisable(GL_DEPTH_TEST)
+            draw_button_2d(button_placement.x, button_placement.y + button_h * 3 + 15, button_placement.w,
+                           button_placement.h,
+                           "Lineárna kombinácia",
+                           active=True)
+
+
+
+
 
             pygame.display.flip()
             continue
@@ -1630,6 +1731,10 @@ def main():
 
         # --- EVENTS ---
         for event in pygame.event.get():
+            if event.type == pygame.VIDEORESIZE:
+                WIDTH, HEIGHT = event.w, event.h
+                screen = pygame.display.set_mode((WIDTH, HEIGHT), DOUBLEBUF | OPENGL | RESIZABLE)
+                glViewport(0, 0, WIDTH, HEIGHT)
             if show_matrix_input:
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     if matrix_size_rect.collidepoint(event.pos):
@@ -1638,6 +1743,7 @@ def main():
                     elif random_range_rect.collidepoint(event.pos):
                         show_random_range_active = True
                         show_matrix_size_active = False
+
                     elif random_button_rect.collidepoint(event.pos):
                         # Generate random matrix
                         try:
@@ -1978,14 +2084,14 @@ def main():
             glMatrixMode(GL_MODELVIEW)
             glLoadIdentity()
             gluLookAt(cam_x, cam_y, cam_z, target[0], target[1], target[2], 0, 1, 0)
-
+            #glDisable(GL_DEPTH_TEST)
             if grid_mode == 1:
                 draw_planes_3D(LENGTH_XYZ, camera_pos = camera_pos)
             elif grid_mode == 2:
                 draw_planes_3D(LENGTH_XYZ,colored = True, camera_pos = camera_pos)
             elif grid_mode == 3:
                 draw_grid_3D(LENGTH_XYZ)
-
+           # glEnable(GL_DEPTH_TEST)
             if show_axes:
                 camera_pos = (cam_x, cam_y, cam_z)
                 draw_axes_3D(LENGTH_XYZ,camera_pos)
