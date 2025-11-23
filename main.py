@@ -1527,9 +1527,7 @@ def main():
 
             # --- 6) present once ---
             pygame.display.flip()
-
-
-
+        pending_input_panel = None
 
         while is_not_baza:
 
@@ -1540,9 +1538,16 @@ def main():
             glMatrixMode(GL_MODELVIEW)
             glLoadIdentity()
 
-            # Pozadie
+            # Pozadie podľa módu
+            if background_dark:
+                glClearColor(0.0, 0.0, 0.0, 1.0)
+                bg_quad_color = (0.1, 0.1, 0.1)
+            else:
+                glClearColor(1.0, 1.0, 1.0, 1.0)
+                bg_quad_color = (0.95, 0.95, 0.95)
+
             glBegin(GL_QUADS)
-            glColor3f(0.1, 0.1, 0.1)
+            glColor3f(*bg_quad_color)
             glVertex2f(0, 0)
             glVertex2f(WIDTH, 0)
             glVertex2f(WIDTH, HEIGHT)
@@ -1557,8 +1562,16 @@ def main():
                 matrix_inputs = [["" for _ in range(cols)] for _ in range(rows)]
 
             mx, my = pygame.mouse.get_pos()
+            toggle_bg_rect = pygame.Rect(20, HEIGHT - 50, 120, 35)
+
             for event in pygame.event.get():
+                # --- prepínanie pozadia a výber bunky matice ---
                 if event.type == pygame.MOUSEBUTTONDOWN:
+                    if toggle_bg_rect.collidepoint(mx, my):
+                        background_dark = not background_dark
+
+                    # --- výber bunky matice bázy ---
+                    clicked_matrix = False
                     for r in range(rows):
                         for c in range(cols):
                             x = matrix_start_x + c * (matrix_cell_w + matrix_gap)
@@ -1566,7 +1579,15 @@ def main():
                             rect = pygame.Rect(x, y, matrix_cell_w, matrix_cell_h)
                             if rect.collidepoint(mx, my):
                                 matrix_active_cell = (r, c)
+                                # Deaktivuj pending panel
+                                if pending_input_panel:
+                                    for panel in pending_input_panel["panels"]:
+                                        panel["active_cell"] = (-1, -1)
+                                clicked_matrix = True
                                 break
+                        if clicked_matrix:
+                            break
+
                 elif event.type == pygame.VIDEORESIZE:
                     WIDTH, HEIGHT = event.w, event.h
                     screen = pygame.display.set_mode((WIDTH, HEIGHT), DOUBLEBUF | OPENGL | RESIZABLE)
@@ -1576,7 +1597,91 @@ def main():
                     running = False
                     return
                 elif event.type == pygame.KEYDOWN:
-                    if matrix_active_cell != (-1, -1):
+                    # Spracovanie kláves pre pending panel má PRIORITU
+                    pending_handled = False
+                    if pending_input_panel:
+                        active_panel_idx = pending_input_panel["active_panel"]
+                        panel = pending_input_panel["panels"][active_panel_idx]
+                        r, c = panel["active_cell"]
+
+                        if r != -1 and c != -1:
+                            pending_handled = True
+                            if event.key == pygame.K_RETURN:
+                                all_filled = True
+                                for p in pending_input_panel["panels"]:
+                                    for row in p["values"]:
+                                        for val in row:
+                                            if not val.strip():
+                                                all_filled = False
+                                                break
+
+                                if all_filled:
+                                    # Extrahuj konštantu ak existuje
+                                    constant = None
+                                    data_panels = []
+                                    for p in pending_input_panel["panels"]:
+                                        if p.get("type") == "constant":
+                                            constant = float(p["values"][0][0])
+                                        else:
+                                            data_panels.append(p)
+
+                                    operation = pending_input_panel["operation"]
+                                    result = None
+
+                                    # VEKTOROVÉ OPERÁCIE
+                                    if pending_input_panel["type"] == "vector":
+                                        if operation == "Sčítania":
+                                            vec1 = [float(v[0]) for v in data_panels[0]["values"]]
+                                            vec2 = [float(v[0]) for v in data_panels[1]["values"]]
+                                            result = [a + b for a, b in zip(vec1, vec2)]
+
+                                        elif operation == "Odčitanie":
+                                            vec1 = [float(v[0]) for v in data_panels[0]["values"]]
+                                            vec2 = [float(v[0]) for v in data_panels[1]["values"]]
+                                            result = [a - b for a, b in zip(vec1, vec2)]
+
+                                        elif operation == "Násobenie Konštantou":
+                                            vec = [float(v[0]) for v in data_panels[0]["values"]]
+                                            result = [constant * v for v in vec]
+
+                                        elif operation == "Lineárna kombinácia":
+                                            # TODO: implementuj lineárnu kombináciu
+                                            pass
+
+                                    # MATICOVÉ OPERÁCIE
+                                    else:
+                                        if operation == "Sčítania":
+                                            mat1 = [[float(v) for v in row] for row in data_panels[0]["values"]]
+                                            mat2 = [[float(v) for v in row] for row in data_panels[1]["values"]]
+                                            result = [[a + b for a, b in zip(row1, row2)] for row1, row2 in
+                                                      zip(mat1, mat2)]
+
+                                        elif operation == "Odčitanie":
+                                            mat1 = [[float(v) for v in row] for row in data_panels[0]["values"]]
+                                            mat2 = [[float(v) for v in row] for row in data_panels[1]["values"]]
+                                            result = [[a - b for a, b in zip(row1, row2)] for row1, row2 in
+                                                      zip(mat1, mat2)]
+
+                                        elif operation == "Násobenie Konštantou":
+                                            mat = [[float(v) for v in row] for row in data_panels[0]["values"]]
+                                            result = [[constant * v for v in row] for row in mat]
+
+                                        elif operation == "Lineárna kombinácia":
+                                            # TODO: implementuj lineárnu kombináciu
+                                            pass
+
+                                    # Ulož výsledok do animated_vectors
+                                    if result is not None:
+                                        animated_vectors.append({'vec': result, 'progress': 0.0})
+
+                                    pending_input_panel = None
+                            elif event.key == pygame.K_BACKSPACE:
+                                panel["values"][r][c] = panel["values"][r][c][:-1]
+                            elif event.unicode.isdigit() or event.unicode in ".-":
+                                panel["values"][r][c] += event.unicode
+
+                    # Spracovanie kláves pre maticu bázy (ak pending nebol spracovaný)
+                    if not pending_handled and matrix_active_cell != (-1, -1):
                         r, c = matrix_active_cell
                         if event.key == pygame.K_RETURN:
                             matrix_active_cell = (-1, -1)
@@ -1585,23 +1690,19 @@ def main():
                         elif event.unicode.isdigit() or event.unicode in ".-":
                             matrix_inputs[r][c] += event.unicode
 
-                    # --- Uloženie matice/bázy po Enter ---
-                    if event.key == pygame.K_RETURN:
+                    # Uloženie matice/bázy po Enter
+                    if not pending_handled and event.key == pygame.K_RETURN:
                         try:
-                            # Prevod vstupu na čísla
                             matrix_values = []
                             for row in matrix_inputs:
                                 filled = [float(cell) for cell in row if cell.strip()]
                                 if filled:
                                     matrix_values.append(tuple(filled))
-
                             if matrix_values:
-                                # Snap na celé čísla, ak chceš
                                 matrix_values = [tuple(int(c) if float(c).is_integer() else c for c in row)
                                                  for row in matrix_values]
 
-                                # --- Overenie, či tvoria bázu ---
-                                mat_np = np.array(matrix_values).T  # vektory ako stĺpce
+                                mat_np = np.array(matrix_values).T
                                 if view_2d_mode:
                                     if mat_np.shape != (2, 2) or np.linalg.det(mat_np) == 0:
                                         print("Zadané vektory NEtvoria bázu 2D!")
@@ -1611,88 +1712,273 @@ def main():
                                         print("Zadané vektory NEtvoria bázu 3D!")
                                         continue
 
-                                # Uloženie do pola 'saved_baza'
-
                                 saved_baza.append(tuple(matrix_values))
                                 print(f"Baza uložená: {tuple(matrix_values)}")
-
-                                # Reset input pre ďalšiu maticu
                                 matrix_inputs = [["" for _ in range(cols)] for _ in range(rows)]
                                 matrix_active_cell = (-1, -1)
                                 is_not_baza = False
                         except Exception as e:
                             print("Invalid matrix input:", e)
 
-            # --- DRAW INPUT BOXES ---
-            col_colors_outline = [(1.0, 0.0, 1.0), (0.0, 1.0, 1.0), (1.0, 1.0, 0.0)]  # max 3 stĺpce
+                # --- Otvorenie panelu po kliknutí na tlačidlo ---
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    vop_buttons = [
+                        ("Sčítania", pygame.Rect(35, 60, button_w, button_h)),
+                        ("Odčitanie", pygame.Rect(35, 60 + button_h + 5, button_w, button_h)),
+                        ("Násobenie Konštantou", pygame.Rect(35, 60 + button_h * 2 + 10, button_w, button_h)),
+                        ("Lineárna kombinácia", pygame.Rect(35, 60 + button_h * 3 + 15, button_w, button_h))
+                    ]
+                    for name, rect in vop_buttons:
+                        if rect.collidepoint(mx, my):
+                            rows_panel = 2 if view_2d_mode else 3
+
+                            if name in ["Sčítania", "Odčitanie"]:
+                                symbol = "+" if name == "Sčítania" else "-"
+                                num_panels = 2
+                                has_constant = False
+                            elif name == "Násobenie Konštantou":
+                                symbol = "×"
+                                num_panels = 1
+                                has_constant = True
+                            else:
+                                symbol = None
+                                num_panels = 1
+                                has_constant = False
+
+                            panel_width = matrix_cell_w + matrix_gap
+                            constant_width = 60 if has_constant else 0
+                            symbol_width = 40 if (symbol and not has_constant) else (30 if has_constant else 0)
+                            total_width = num_panels * panel_width + symbol_width + constant_width
+                            start_x = WIDTH // 2 - total_width // 2
+
+                            panels = []
+                            if has_constant:
+                                panels.append({
+                                    "type": "constant",
+                                    "rows": 1,
+                                    "cols": 1,
+                                    "values": [[""]],
+                                    "active_cell": (0, 0),
+                                    "x": start_x,
+                                    "y": HEIGHT // 2 - matrix_cell_h // 2
+                                })
+                                panels.append({
+                                    "type": "vector",
+                                    "rows": rows_panel,
+                                    "cols": 1,
+                                    "values": [["" for _ in range(1)] for _ in range(rows_panel)],
+                                    "active_cell": (-1, -1),
+                                    "x": start_x + constant_width + symbol_width,
+                                    "y": HEIGHT // 2 - (rows_panel * (matrix_cell_h + matrix_gap)) // 2
+                                })
+                            else:
+                                for i in range(num_panels):
+                                    panels.append({
+                                        "type": "vector",
+                                        "rows": rows_panel,
+                                        "cols": 1,
+                                        "values": [["" for _ in range(1)] for _ in range(rows_panel)],
+                                        "active_cell": (0, 0) if i == 0 else (-1, -1),
+                                        "x": start_x + i * (panel_width + symbol_width),
+                                        "y": HEIGHT // 2 - (rows_panel * (matrix_cell_h + matrix_gap)) // 2
+                                    })
+
+                            pending_input_panel = {
+                                "type": "vector",
+                                "operation": name,
+                                "symbol": symbol,
+                                "num_panels": len(panels),
+                                "has_constant": has_constant,
+                                "panels": panels,
+                                "active_panel": 0
+                            }
+                            break
+
+                    mop_buttons = [
+                        ("Sčítania", pygame.Rect(35, 380, button_w, button_h)),
+                        ("Odčitanie", pygame.Rect(35, 380 + button_h + 5, button_w, button_h)),
+                        ("Násobenie Konštantou", pygame.Rect(35, 380 + button_h * 2 + 10, button_w, button_h)),
+                        ("Lineárna kombinácia", pygame.Rect(35, 380 + button_h * 3 + 15, button_w, button_h))
+                    ]
+                    for name, rect in mop_buttons:
+                        if rect.collidepoint(mx, my):
+                            rows_panel = cols_panel = 2 if view_2d_mode else 3
+
+                            if name in ["Sčítania", "Odčitanie"]:
+                                symbol = "+" if name == "Sčítania" else "-"
+                                num_panels = 2
+                                has_constant = False
+                            elif name == "Násobenie Konštantou":
+                                symbol = "×"
+                                num_panels = 1
+                                has_constant = True
+                            else:
+                                symbol = None
+                                num_panels = 1
+                                has_constant = False
+
+                            panel_width = cols_panel * (matrix_cell_w + matrix_gap)
+                            constant_width = 60 if has_constant else 0
+                            symbol_width = 40 if (symbol and not has_constant) else (30 if has_constant else 0)
+                            total_width = num_panels * panel_width + symbol_width + constant_width
+                            start_x = WIDTH // 2 - total_width // 2
+
+                            panels = []
+                            if has_constant:
+                                panels.append({
+                                    "type": "constant",
+                                    "rows": 1,
+                                    "cols": 1,
+                                    "values": [[""]],
+                                    "active_cell": (0, 0),
+                                    "x": start_x,
+                                    "y": HEIGHT // 2 - matrix_cell_h // 2
+                                })
+                                panels.append({
+                                    "type": "matrix",
+                                    "rows": rows_panel,
+                                    "cols": cols_panel,
+                                    "values": [["" for _ in range(cols_panel)] for _ in range(rows_panel)],
+                                    "active_cell": (-1, -1),
+                                    "x": start_x + constant_width + symbol_width,
+                                    "y": HEIGHT // 2 - (rows_panel * (matrix_cell_h + matrix_gap)) // 2
+                                })
+                            else:
+                                for i in range(num_panels):
+                                    panels.append({
+                                        "type": "matrix",
+                                        "rows": rows_panel,
+                                        "cols": cols_panel,
+                                        "values": [["" for _ in range(cols_panel)] for _ in range(rows_panel)],
+                                        "active_cell": (0, 0) if i == 0 else (-1, -1),
+                                        "x": start_x + i * (panel_width + symbol_width),
+                                        "y": HEIGHT // 2 - (rows_panel * (matrix_cell_h + matrix_gap)) // 2
+                                    })
+
+                            pending_input_panel = {
+                                "type": "matrix",
+                                "operation": name,
+                                "symbol": symbol,
+                                "num_panels": len(panels),
+                                "has_constant": has_constant,
+                                "panels": panels,
+                                "active_panel": 0
+                            }
+                            break
+
+                # --- Kliknutie na bunku v pending paneli ---
+                if pending_input_panel and event.type == pygame.MOUSEBUTTONDOWN:
+                    clicked_panel = False
+                    for panel_idx, panel in enumerate(pending_input_panel["panels"]):
+                        if panel.get("type") == "constant":
+                            x = panel["x"]
+                            y = panel["y"]
+                            rect = pygame.Rect(x, y, 50, matrix_cell_h)
+                            if rect.collidepoint(mx, my):
+                                for p in pending_input_panel["panels"]:
+                                    p["active_cell"] = (-1, -1)
+                                pending_input_panel["active_panel"] = panel_idx
+                                panel["active_cell"] = (0, 0)
+                                matrix_active_cell = (-1, -1)
+                                clicked_panel = True
+                                break
+                        else:
+                            for r in range(panel["rows"]):
+                                for c in range(panel["cols"]):
+                                    x = panel["x"] + c * (matrix_cell_w + matrix_gap)
+                                    y = panel["y"] + r * (matrix_cell_h + matrix_gap)
+                                    rect = pygame.Rect(x, y, matrix_cell_w, matrix_cell_h)
+                                    if rect.collidepoint(mx, my):
+                                        for p in pending_input_panel["panels"]:
+                                            p["active_cell"] = (-1, -1)
+                                        pending_input_panel["active_panel"] = panel_idx
+                                        panel["active_cell"] = (r, c)
+                                        matrix_active_cell = (-1, -1)
+                                        clicked_panel = True
+                                        break
+                                if clicked_panel:
+                                    break
+                        if clicked_panel:
+                            break
+
+            # --- DRAW INPUT BOXES pre maticu ---
+            col_colors_outline = [(1.0, 0.0, 1.0), (0.0, 1.0, 1.0), (1.0, 1.0, 0.0)]
             for r in range(rows):
                 for c in range(cols):
                     x = matrix_start_x + c * (matrix_cell_w + matrix_gap)
                     y = matrix_start_y + r * (matrix_cell_h + matrix_gap)
                     active = (r, c) == matrix_active_cell
-
-                    # Bezpečné farby
                     col_color_outline_current = col_colors_outline[c] if c < len(col_colors_outline) else (0.7, 0.7,
                                                                                                            0.7)
                     col_color = (0.7, 0.7, 0.7)
-
                     draw_input_box_3d(x, y, matrix_cell_w, matrix_cell_h, matrix_inputs[r][c], active,
                                       fill_color=col_color, fill_color_outline=col_color_outline_current)
 
-            #glDisable(GL_DEPTH_TEST)
+            # --- DRAW tlačidlá ---
             button_placement = pygame.Rect(35, 60, button_w, button_h)
-            if background_dark:
-                color1 = (1,1,1)
-            else:
-                color1 = (0,0,0)
-
-            draw_text_2d("Vektorove operácie: ",
-                         (button_placement.x-15, button_placement.y - 40),
-                         color=color1,
+            color1 = (1, 1, 1) if background_dark else (0, 0, 0)
+            draw_text_2d("Vektorove operácie: ", (button_placement.x - 15, button_placement.y - 40), color=color1,
                          font_size=30)
-
             draw_button_2d(button_placement.x, button_placement.y, button_placement.w, button_placement.h, "Sčítania",
                            active=True)
-            #glDisable(GL_DEPTH_TEST)
-            draw_button_2d(button_placement.x, button_placement.y + button_h + 5, button_placement.w, button_placement.h, "Odčitanie",
-                           active=True)
-            #glDisable(GL_DEPTH_TEST)
-            draw_button_2d(button_placement.x, button_placement.y + button_h*2 + 10, button_placement.w, button_placement.h,  "Násobenie Konštantou",
-                           active=True)
-            #glDisable(GL_DEPTH_TEST)
-            draw_button_2d(button_placement.x, button_placement.y + button_h*3 + 15, button_placement.w, button_placement.h,
-                           "Lineárna kombinácia",
-                           active=True)
+            draw_button_2d(button_placement.x, button_placement.y + button_h + 5, button_placement.w,
+                           button_placement.h, "Odčitanie", active=True)
+            draw_button_2d(button_placement.x, button_placement.y + button_h * 2 + 10, button_placement.w,
+                           button_placement.h, "Násobenie Konštantou", active=True)
+            draw_button_2d(button_placement.x, button_placement.y + button_h * 3 + 15, button_placement.w,
+                           button_placement.h, "Lineárna kombinácia", active=True)
 
             button_placement = pygame.Rect(35, 380, button_w, button_h)
-            draw_text_2d("Maticove operácie: ",
-                         (button_placement.x - 15, button_placement.y - 40),
-                         color=color1,
+            draw_text_2d("Maticove operácie: ", (button_placement.x - 15, button_placement.y - 40), color=color1,
                          font_size=30)
-
-
             draw_button_2d(button_placement.x, button_placement.y, button_placement.w, button_placement.h, "Sčítania",
                            active=True)
-            # glDisable(GL_DEPTH_TEST)
             draw_button_2d(button_placement.x, button_placement.y + button_h + 5, button_placement.w,
-                           button_placement.h, "Odčitanie",
-                           active=True)
-            # glDisable(GL_DEPTH_TEST)
+                           button_placement.h, "Odčitanie", active=True)
             draw_button_2d(button_placement.x, button_placement.y + button_h * 2 + 10, button_placement.w,
-                           button_placement.h, "Násobenie Konštantou",
-                           active=True)
-            # glDisable(GL_DEPTH_TEST)
+                           button_placement.h, "Násobenie Konštantou", active=True)
             draw_button_2d(button_placement.x, button_placement.y + button_h * 3 + 15, button_placement.w,
-                           button_placement.h,
-                           "Lineárna kombinácia",
+                           button_placement.h, "Lineárna kombinácia", active=True)
+
+            # --- DRAW Toggle Dark/Light Mode BUTTON ---
+            label = "Dark Mode" if background_dark else "Light Mode"
+            draw_button_2d(toggle_bg_rect.x, toggle_bg_rect.y, toggle_bg_rect.width, toggle_bg_rect.height, label,
                            active=True)
 
+            # --- DRAW pending panel ---
+            if pending_input_panel:
+                for panel_idx, panel in enumerate(pending_input_panel["panels"]):
+                    is_active_panel = (panel_idx == pending_input_panel["active_panel"])
 
+                    if panel.get("type") == "constant":
+                        x = panel["x"]
+                        y = panel["y"]
+                        active = is_active_panel and panel["active_cell"] == (0, 0)
+                        draw_input_box_3d(x, y, 50, matrix_cell_h, panel["values"][0][0], active)
+                    else:
+                        for r in range(panel["rows"]):
+                            for c in range(panel["cols"]):
+                                x = panel["x"] + c * (matrix_cell_w + matrix_gap)
+                                y = panel["y"] + r * (matrix_cell_h + matrix_gap)
+                                active = is_active_panel and (r, c) == panel["active_cell"]
+                                draw_input_box_3d(x, y, matrix_cell_w, matrix_cell_h, panel["values"][r][c], active)
 
-
+                    if pending_input_panel["symbol"]:
+                        if pending_input_panel.get("has_constant") and panel_idx == 0:
+                            symbol_x = panel["x"] + 60
+                            symbol_y = panel["y"]
+                            color_symbol = (1, 1, 1) if background_dark else (0, 0, 0)
+                            draw_text_2d(pending_input_panel["symbol"], (symbol_x, symbol_y), color=color_symbol,
+                                         font_size=40)
+                        elif not pending_input_panel.get("has_constant") and panel_idx < len(
+                                pending_input_panel["panels"]) - 1:
+                            symbol_x = panel["x"] + panel["cols"] * (matrix_cell_w + matrix_gap) + 10
+                            symbol_y = panel["y"] + (panel["rows"] * (matrix_cell_h + matrix_gap)) // 2
+                            color_symbol = (1, 1, 1) if background_dark else (0, 0, 0)
+                            draw_text_2d(pending_input_panel["symbol"], (symbol_x, symbol_y), color=color_symbol,
+                                         font_size=40)
 
             pygame.display.flip()
-            continue
 
         def snap_number(x, precision=6):
             """Round to nearest number; convert to int if whole, else keep float."""
