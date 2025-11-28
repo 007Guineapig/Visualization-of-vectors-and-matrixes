@@ -1004,7 +1004,9 @@ class Camera:
 
     def __init__(self, width, height):
         self.width = width
+
         self.height = height
+
         self.distance = 7.0
         self.azimuth = 45.0
         self.elevation = 25.0
@@ -1024,6 +1026,7 @@ class Camera:
 
     def get_position(self):
         """Vráti pozíciu kamery v 3D priestore"""
+        self.width, self.height = pygame.display.get_window_size()
         rad_az = math.radians(self.azimuth)
         rad_el = math.radians(self.elevation)
         cam_x = self.target[0] + self.distance * math.cos(rad_el) * math.sin(rad_az)
@@ -1033,6 +1036,7 @@ class Camera:
 
     def setup_3d_projection(self):
         """Nastaví 3D projekciu"""
+        self.width, self.height = pygame.display.get_window_size()
         cam_x, cam_y, cam_z = self.get_position()
 
         glMatrixMode(GL_PROJECTION)
@@ -1046,14 +1050,28 @@ class Camera:
                   0, 1, 0)
 
     def setup_2d_projection(self):
-        """Nastaví 2D ortografickú projekciu"""
+        """Nastaví 2D ortografickú projekciu s aspect ratio"""
+        self.width, self.height = pygame.display.get_window_size()
+
+        # OPRAVA: Pridaj aspect ratio do projekcie
+        aspect = self.width / self.height
+
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
-        glOrtho(-self.ortho_scale + self.pan_offset_x,
-                self.ortho_scale + self.pan_offset_x,
-                -self.ortho_scale + self.pan_offset_y,
-                self.ortho_scale + self.pan_offset_y,
-                -1, 1)
+
+        if aspect >= 1.0:  # Široké okno
+            glOrtho(-self.ortho_scale * aspect + self.pan_offset_x,
+                    self.ortho_scale * aspect + self.pan_offset_x,
+                    -self.ortho_scale + self.pan_offset_y,
+                    self.ortho_scale + self.pan_offset_y,
+                    -1, 1)
+        else:  # Vysoké okno
+            glOrtho(-self.ortho_scale + self.pan_offset_x,
+                    self.ortho_scale + self.pan_offset_x,
+                    -self.ortho_scale / aspect + self.pan_offset_y,
+                    self.ortho_scale / aspect + self.pan_offset_y,
+                    -1, 1)
+
         glMatrixMode(GL_MODELVIEW)
         glLoadIdentity()
 
@@ -1112,12 +1130,22 @@ class GridRenderer:
 
     @staticmethod
     def draw_grid_2d(ortho_scale, pan_x, pan_y, width, height, step=1.0, z=-0.1, max_lines=200):
+        """Nakreslí 2D mriežku s aspect ratio korekciou"""
         width, height = pygame.display.get_window_size()
-        """Nakreslí 2D mriežku"""
-        left = -ortho_scale + pan_x
-        right = ortho_scale + pan_x
-        bottom = -ortho_scale + pan_y
-        top = ortho_scale + pan_y
+
+        # OPRAVA: Vypočítaj aspect ratio a uprav viditeľnú oblasť
+        aspect = width / height
+
+        if aspect >= 1.0:  # Okno je širšie ako vysoké
+            left = -ortho_scale * aspect + pan_x
+            right = ortho_scale * aspect + pan_x
+            bottom = -ortho_scale + pan_y
+            top = ortho_scale + pan_y
+        else:  # Okno je vyššie ako široké
+            left = -ortho_scale + pan_x
+            right = ortho_scale + pan_x
+            bottom = -ortho_scale / aspect + pan_y
+            top = ortho_scale / aspect + pan_y
 
         visible_range = max(right - left, top - bottom)
         display_step = step
@@ -1276,7 +1304,6 @@ class GridRenderer:
 
         glDisable(GL_POLYGON_OFFSET_LINE)
         glPopAttrib()
-
 class AnimationController:
     """Controls step-by-step animation of vector operations - S PLYNULÝMI PRECHODMI"""
 
@@ -1292,7 +1319,7 @@ class AnimationController:
         # Animačný stav
         self.animating = False
         self.animation_progress = 0.0
-        self.animation_speed = 0.7  # Rýchlosť animácie (vyššie = rýchlejšie)
+        self.animation_speed = 0.6  # Rýchlosť animácie (vyššie = rýchlejšie)
         self.source_vectors = []  # Vektory na začiatku animácie
         self.target_vectors = []  # Cieľové vektory
 
@@ -1306,9 +1333,9 @@ class AnimationController:
 
         # Define number of steps based on operation
         if operation_type == 'add':
-            self.max_steps = 2  # OPRAVA: kroky 0, 1, 2 (3 kroky celkom)
+            self.max_steps = 2
         elif operation_type == 'subtract':
-            self.max_steps = 3  # kroky 0, 1, 2, 3 (4 kroky celkom)
+            self.max_steps = 3
         elif operation_type == 'scalar_mult':
             self.max_steps = 1
         else:
@@ -1319,21 +1346,14 @@ class AnimationController:
         # Nastav počiatočné vektory
         self.source_vectors = self._get_vectors_for_step(0)
         self.target_vectors = self.source_vectors
-        self.animation_progress = 1.0  # Už sme na začiatku
+        self.animation_progress = 1.0
 
     def next_step(self):
         """Move to next step with animation"""
         if self.current_step < self.max_steps:
-            # Ulož aktuálne vektory ako zdroj
             self.source_vectors = self._get_vectors_for_step(self.current_step)
-
-            # Prejdi na ďalší krok
             self.current_step += 1
-
-            # Nastav cieľové vektory
             self.target_vectors = self._get_vectors_for_step(self.current_step)
-
-            # Začni animáciu
             self.animating = True
             self.animation_progress = 0.0
             return True
@@ -1342,16 +1362,9 @@ class AnimationController:
     def prev_step(self):
         """Move to previous step with animation"""
         if self.current_step > 0:
-            # Ulož aktuálne vektory ako zdroj
             self.source_vectors = self._get_vectors_for_step(self.current_step)
-
-            # Vráť sa na predchádzajúci krok
             self.current_step -= 1
-
-            # Nastav cieľové vektory
             self.target_vectors = self._get_vectors_for_step(self.current_step)
-
-            # Začni animáciu
             self.animating = True
             self.animation_progress = 0.0
             return True
@@ -1396,7 +1409,7 @@ class AnimationController:
         return isinstance(data[0], (list, tuple))
 
     def _interpolate_vector(self, source, target, t):
-        """Interpoluje medzi dvoma vektormi"""
+        """Interpoluje medzi dvoma vektormi - OPRAVENÉ PRE row_offsets"""
         result = source.copy()
 
         # Interpoluj vektor
@@ -1415,17 +1428,36 @@ class AnimationController:
             result['offset'] = [s + (to - s) * self.animation_progress
                                 for s, to in zip(source['offset'], target['offset'])]
         elif 'offset' in target:
-            result['offset'] = target['offset']
+            # Ak source nemá offset, začni od [0,0,0]
+            src_offset = source.get('offset', [0, 0, 0])
+            result['offset'] = [s + (to - s) * self.animation_progress
+                                for s, to in zip(src_offset, target['offset'])]
 
-        # Interpoluj row_offsets ak existujú
-        if 'row_offsets' in source and 'row_offsets' in target:
+        # OPRAVA: Správna interpolácia row_offsets
+        if 'row_offsets' in target:
+            if 'row_offsets' in source:
+                # Interpoluj medzi existujúcimi row_offsets
+                result['row_offsets'] = [
+                    [s + (to - s) * self.animation_progress
+                     for s, to in zip(s_off, t_off)]
+                    for s_off, t_off in zip(source['row_offsets'], target['row_offsets'])
+                ]
+            else:
+                # Source nemá row_offsets, začni od [0,0,0] pre každý riadok
+                src_offset = source.get('offset', [0, 0, 0])
+                result['row_offsets'] = [
+                    [src_offset[j] + (t_off[j] - src_offset[j]) * self.animation_progress
+                     for j in range(len(t_off))]
+                    for t_off in target['row_offsets']
+                ]
+        elif 'row_offsets' in source:
+            # Target nemá row_offsets, interpoluj späť k [0,0,0]
+            tgt_offset = target.get('offset', [0, 0, 0])
             result['row_offsets'] = [
-                [s + (to - s) * self.animation_progress
-                 for s, to in zip(s_off, t_off)]
-                for s_off, t_off in zip(source['row_offsets'], target['row_offsets'])
+                [s + (tgt_offset[j] - s) * self.animation_progress
+                 for j, s in enumerate(s_off)]
+                for s_off in source['row_offsets']
             ]
-        elif 'row_offsets' in target:
-            result['row_offsets'] = target['row_offsets']
 
         # Interpoluj alpha
         source_alpha = source.get('alpha', 1.0)
@@ -1440,6 +1472,10 @@ class AnimationController:
             )
         elif 'color' in target:
             result['color'] = target['color']
+
+        # Skopíruj label
+        if 'label' in target:
+            result['label'] = target['label']
 
         return result
 
@@ -1499,7 +1535,6 @@ class AnimationController:
                         'label': 'v2'
                     })
             elif step == 2:
-                # OPRAVA: Pôvodné vektory s alpha=0.3 + nový zelený výsledok
                 vectors.append({
                     'vec': self.operands[0],
                     'offset': [0, 0, 0],
@@ -1529,7 +1564,6 @@ class AnimationController:
                         'alpha': 0.3,
                         'label': 'v2'
                     })
-                # NOVÝ zelený výsledný vektor
                 vectors.append({
                     'vec': self.result,
                     'offset': [0, 0, 0],
@@ -1538,223 +1572,110 @@ class AnimationController:
                     'label': 'A + B' if is_matrix_op else 'v1 + v2'
                 })
 
-
         elif self.operation_type == 'subtract':
-
             if step == 0:
-
-                # Pôvodné vektory
-
                 vectors.append({
-
                     'vec': self.operands[0],
-
                     'offset': [0, 0, 0],
-
                     'color': (1, 0.5, 0),
-
                     'label': 'A' if is_matrix_op else 'v1'
-
                 })
-
                 vectors.append({
-
                     'vec': self.operands[1],
-
                     'offset': [0, 0, 0],
-
                     'color': (0, 0.5, 1),
-
                     'label': 'B' if is_matrix_op else 'v2'
-
                 })
-
             elif step == 1:
-
-                # Prvý vektor + negovaný druhý vektor (ešte stále v počiatku)
-
                 vectors.append({
-
                     'vec': self.operands[0],
-
                     'offset': [0, 0, 0],
-
                     'color': (1, 0.5, 0),
-
                     'label': 'A' if is_matrix_op else 'v1'
-
                 })
-
                 if is_matrix_op:
-
                     negated = [[-x for x in row] for row in self.operands[1]]
-
                     vectors.append({
-
                         'vec': negated,
-
                         'offset': [0, 0, 0],
-
                         'color': (1, 0, 0.5),
-
                         'label': '-B'
-
                     })
-
                 else:
-
                     negated = [-x for x in self.operands[1]]
-
                     vectors.append({
-
                         'vec': negated,
-
                         'offset': [0, 0, 0],
-
                         'color': (1, 0, 0.5),
-
                         'label': '-v2'
-
                     })
-
             elif step == 2:
-
-                # Negovaný vektor posunutý na koniec prvého
-
                 vectors.append({
-
                     'vec': self.operands[0],
-
                     'offset': [0, 0, 0],
-
                     'color': (1, 0.5, 0),
-
                     'label': 'A' if is_matrix_op else 'v1'
-
                 })
-
                 if is_matrix_op:
-
                     negated = [[-x for x in row] for row in self.operands[1]]
-
                     row_offsets = []
-
                     for row in self.operands[0]:
                         offset = list(row) + [0] * (3 - len(row))
-
                         row_offsets.append(offset[:3])
-
                     vectors.append({
-
                         'vec': negated,
-
                         'offset': [0, 0, 0],
-
                         'row_offsets': row_offsets,
-
                         'color': (1, 0, 0.5),
-
                         'label': '-B'
-
                     })
-
                 else:
-
                     negated = [-x for x in self.operands[1]]
-
                     offset = list(self.operands[0]) + [0] * (3 - len(self.operands[0]))
-
                     vectors.append({
-
                         'vec': negated,
-
                         'offset': offset[:3],
-
                         'color': (1, 0, 0.5),
-
                         'label': '-v2'
-
                     })
-
             elif step == 3:
-
-                # OPRAVA: Pôvodné vektory s alpha=0.3 (priesvitné) + nový zelený výsledok
-
                 vectors.append({
-
                     'vec': self.operands[0],
-
                     'offset': [0, 0, 0],
-
                     'color': (1, 0.5, 0),
-
                     'alpha': 0.3,
-
                     'label': 'A' if is_matrix_op else 'v1'
-
                 })
-
                 if is_matrix_op:
-
                     negated = [[-x for x in row] for row in self.operands[1]]
-
                     row_offsets = []
-
                     for row in self.operands[0]:
                         offset = list(row) + [0] * (3 - len(row))
-
                         row_offsets.append(offset[:3])
-
                     vectors.append({
-
                         'vec': negated,
-
                         'offset': [0, 0, 0],
-
                         'row_offsets': row_offsets,
-
                         'color': (1, 0, 0.5),
-
                         'alpha': 0.3,
-
                         'label': '-B'
-
                     })
-
                 else:
-
                     negated = [-x for x in self.operands[1]]
-
                     offset = list(self.operands[0]) + [0] * (3 - len(self.operands[0]))
-
                     vectors.append({
-
                         'vec': negated,
-
                         'offset': offset[:3],
-
                         'color': (1, 0, 0.5),
-
                         'alpha': 0.3,
-
                         'label': '-v2'
-
                     })
-
-                # NOVÝ zelený výsledný vektor
-
                 vectors.append({
-
                     'vec': self.result,
-
                     'offset': [0, 0, 0],
-
                     'color': (0, 1, 0),
-
                     'alpha': 1.0,
-
                     'label': 'A - B' if is_matrix_op else 'v1 - v2'
-
                 })
 
         elif self.operation_type == 'scalar_mult':
@@ -1803,11 +1724,9 @@ class AnimationController:
 
                 # Animuj vektor od nuly do plnej veľkosti
                 if isinstance(new_vec['vec'][0], (int, float)):
-                    # Jednoduchý vektor
                     new_vec['vec'] = [v * self.animation_progress for v in new_vec['vec']]
                     new_vec['progress'] = self.animation_progress
                 else:
-                    # Matica
                     new_vec['vec'] = [[v * self.animation_progress for v in row]
                                       for row in new_vec['vec']]
                     if 'row_progress' not in new_vec:
@@ -1821,7 +1740,6 @@ class AnimationController:
         elif len(self.source_vectors) > len(self.target_vectors):
             for i in range(len(self.target_vectors), len(self.source_vectors)):
                 old_vec = self.source_vectors[i].copy()
-                # Postupne fade-out
                 old_vec['alpha'] = 1.0 - self.animation_progress
                 interpolated.append(old_vec)
 
@@ -1831,14 +1749,25 @@ class AnimationController:
 class AxesRenderer:
     """Renderer pre súradnicové osi"""
 
+
     @staticmethod
     def draw_axes_2d(ortho_scale, pan_x, pan_y, width, height, ui_renderer):
-        """Nakreslí 2D osi"""
+        """Nakreslí 2D osi s aspect ratio korekciou"""
         width, height = pygame.display.get_window_size()
-        left = -ortho_scale + pan_x
-        right = ortho_scale + pan_x
-        bottom = -ortho_scale + pan_y
-        top = ortho_scale + pan_y
+
+        # OPRAVA: Vypočítaj aspect ratio a správne hranice
+        aspect = width / height
+
+        if aspect >= 1.0:  # Široké okno
+            left = -ortho_scale * aspect + pan_x
+            right = ortho_scale * aspect + pan_x
+            bottom = -ortho_scale + pan_y
+            top = ortho_scale + pan_y
+        else:  # Vysoké okno
+            left = -ortho_scale + pan_x
+            right = ortho_scale + pan_x
+            bottom = -ortho_scale / aspect + pan_y
+            top = ortho_scale / aspect + pan_y
 
         # Draw axis lines
         glLineWidth(3.0)
