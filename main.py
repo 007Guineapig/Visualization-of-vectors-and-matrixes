@@ -1823,13 +1823,22 @@ class AnimationController:
 
             elif step == 1:
                 # Zobraz c1*v1 (zvýrazni), v2 priesvitne
-                scaled_v1 = [c1 * x for x in self.operands[0]]
-                vectors.append({
-                    'vec': scaled_v1,
-                    'offset': [0, 0, 0],
-                    'color': (1, 0.5, 0),
-                    'label': f'{c1}·v1'
-                })
+                if is_matrix_op:
+                    scaled_v1 = [[c1 * x for x in row] for row in self.operands[0]]
+                    vectors.append({
+                        'vec': scaled_v1,
+                        'offset': [0, 0, 0],
+                        'color': (1, 0.5, 0),
+                        'label': f'{c1}·v1'
+                    })
+                else:
+                    scaled_v1 = [c1 * x for x in self.operands[0]]
+                    vectors.append({
+                        'vec': scaled_v1,
+                        'offset': [0, 0, 0],
+                        'color': (1, 0.5, 0),
+                        'label': f'{c1}·v1'
+                    })
                 vectors.append({
                     'vec': self.operands[1],
                     'offset': [0, 0, 0],
@@ -1840,15 +1849,27 @@ class AnimationController:
 
             elif step == 2:
                 # Zobraz c2*v2 (zvýrazni), v1 priesvitne
-                scaled_v1 = [c1 * x for x in self.operands[0]]
-                scaled_v2 = [c2 * x for x in self.operands[1]]
-                vectors.append({
-                    'vec': scaled_v1,
-                    'offset': [0, 0, 0],
-                    'color': (1, 0.5, 0),
-                    'alpha': 0.3,
-                    'label': 'v1'
-                })
+                if is_matrix_op:
+                    scaled_v1 = [[c1 * x for x in row] for row in self.operands[0]]
+                    scaled_v2 = [[c2 * x for x in row] for row in self.operands[1]]
+                    vectors.append({
+                        'vec': scaled_v1,
+                        'offset': [0, 0, 0],
+                        'color': (1, 0.5, 0),
+                        'alpha': 0.3,
+                        'label': 'v1'
+                    })
+                else:
+                    scaled_v1 = [c1 * x for x in self.operands[0]]
+                    scaled_v2 = [c2 * x for x in self.operands[1]]
+                    vectors.append({
+                        'vec': scaled_v1,
+                        'offset': [0, 0, 0],
+                        'color': (1, 0.5, 0),
+                        'alpha': 0.3,
+                        'label': 'v1'
+                    })
+
                 vectors.append({
                     'vec': scaled_v2,
                     'offset': [0, 0, 0],
@@ -1858,41 +1879,92 @@ class AnimationController:
 
             elif step == 3:
                 # Zobraz c1*v1 + c2*v2 (oba vektory viditeľné)
-                scaled_v1 = [c1 * x for x in self.operands[0]]
-                scaled_v2 = [c2 * x for x in self.operands[1]]
-                vectors.append({
-                    'vec': scaled_v1,
-                    'offset': [0, 0, 0],
-                    'color': (1, 0.5, 0),
-                    'label': f'{c1}·v1'
-                })
-                offset = list(scaled_v1) + [0] * (3 - len(scaled_v1))
-                vectors.append({
-                    'vec': scaled_v2,
-                    'offset': offset[:3],
-                    'color': (0, 0.5, 1),
-                    'label': f'{c2}·v2'
-                })
+                if is_matrix_op:
+                    scaled_v1 = [[c1 * x for x in row] for row in self.operands[0]]
+                    scaled_v2 = [[c2 * x for x in row] for row in self.operands[1]]
+                    vectors.append({
+                        'vec': scaled_v1,
+                        'offset': [0, 0, 0],
+                        'color': (1, 0.5, 0),
+                        'label': f'{c1}·v1'
+                    })
+                    row_offsets = []
+                    for row in scaled_v1:
+                        offset = list(row) + [0] * (3 - len(row))
+                        row_offsets.append(offset[:3])
+
+                    vectors.append({
+                        'vec': scaled_v2,
+                        'offset': [0, 0, 0],
+                        'row_offsets': row_offsets,
+                        'color': (0, 0.5, 1),
+                        'label': f'{c2}·v2'
+                    })
+
+                else:
+                    scaled_v1 = [c1 * x for x in self.operands[0]]
+                    scaled_v2 = [c2 * x for x in self.operands[1]]
+                    vectors.append({
+                        'vec': scaled_v1,
+                        'offset': [0, 0, 0],
+                        'color': (1, 0.5, 0),
+                        'label': f'{c1}·v1'
+                    })
+                    offset = list(scaled_v1) + [0] * (3 - len(scaled_v1))
+                    vectors.append({
+                        'vec': scaled_v2,
+                        'offset': offset[:3],
+                        'color': (0, 0.5, 1),
+                        'label': f'{c2}·v2'
+                    })
 
             elif step == 4:
                 # Výsledok (predošlé vektory priesvitné)
-                scaled_v1 = [c1 * x for x in self.operands[0]]
-                scaled_v2 = [c2 * x for x in self.operands[1]]
-                vectors.append({
-                    'vec': scaled_v1,
-                    'offset': [0, 0, 0],
-                    'color': (1, 0.5, 0),
-                    'alpha': 0.3,
-                    'label': f'{c1}·v1'
-                })
-                offset = list(scaled_v1) + [0] * (3 - len(scaled_v1))
-                vectors.append({
-                    'vec': scaled_v2,
-                    'offset': offset[:3],
-                    'color': (0, 0.5, 1),
-                    'alpha': 0.3,
-                    'label': f'{c2}·v2'
-                })
+                if is_matrix_op:
+                    scaled_v1 = [[c1 * x for x in row] for row in self.operands[0]]
+                    scaled_v2 = [[c2 * x for x in row] for row in self.operands[1]]
+                    vectors.append({
+                        'vec': scaled_v1,
+                        'offset': [0, 0, 0],
+                        'color': (1, 0.5, 0),
+                        'alpha': 0.3,
+                        'label': f'{c1}·v1'
+                    })
+
+                    row_offsets = []
+                    for row in scaled_v1:
+                        offset = list(row) + [0] * (3 - len(row))
+                        row_offsets.append(offset[:3])
+
+                    vectors.append({
+                        'vec': scaled_v2,
+                        'offset': [0, 0, 0],
+                        'row_offsets': row_offsets,
+                        'color': (0, 0.5, 1),
+                        'alpha': 0.3,
+                        'label': f'{c2}·v2'
+                    })
+
+                else:
+                    scaled_v1 = [c1 * x for x in self.operands[0]]
+                    scaled_v2 = [c2 * x for x in self.operands[1]]
+                    vectors.append({
+                        'vec': scaled_v1,
+                        'offset': [0, 0, 0],
+                        'color': (1, 0.5, 0),
+                        'alpha': 0.3,
+                        'label': f'{c1}·v1'
+                    })
+
+                    offset = list(scaled_v1) + [0] * (3 - len(scaled_v1))
+                    vectors.append({
+                        'vec': scaled_v2,
+                        'offset': offset[:3],
+                        'color': (0, 0.5, 1),
+                        'alpha': 0.3,
+                        'label': f'{c2}·v2'
+                    })
+
                 vectors.append({
                     'vec': self.result,
                     'offset': [0, 0, 0],
@@ -2453,6 +2525,99 @@ class Application:
                                 symbol = "×"
                                 num_panels = 1
                                 has_constant = True
+
+
+                            elif name == "Lineárna kombinácia":
+                                symbol = None
+                                num_panels = 4  # c1, v1, c2, v2
+                                has_constant = False
+
+                                # Špeciálne rozloženie: konštanta - vektor - konštanta - vektor
+                                constant_width = 60
+                                vector_panel_width = Config.MATRIX_CELL_W + Config.MATRIX_GAP
+                                symbol_width = 30
+
+                                total_width = (constant_width + vector_panel_width + symbol_width) * 2
+                                start_x = self.width // 2 - total_width // 2
+
+                                panels = []
+                                current_x = start_x
+
+                                # c1
+                                panels.append({
+                                    "type": "constant",
+                                    "rows": 1,
+                                    "cols": 1,
+                                    "values": [[""]],
+                                    "active_cell": (0, 0),
+                                    "x": current_x,
+                                    "y": self.height // 2 - Config.MATRIX_CELL_H // 2,
+                                    "label": "c1"
+                                })
+                                current_x += constant_width
+
+                                # Symbol ×
+                                current_x += 10
+
+                                # v1
+                                panels.append({
+                                    "type": "matrix",
+                                    "rows": rows_panel,
+                                    "cols": cols_panel,
+                                    "values": [["" for _ in range(cols_panel)] for _ in range(rows_panel)],
+                                    "active_cell": (-1, -1),
+                                    "x": current_x,
+                                    "y": self.height // 2 - (
+                                                rows_panel * (Config.MATRIX_CELL_H + Config.MATRIX_GAP)) // 2,
+                                    "label": "mat1"
+                                })
+                                current_x += vector_panel_width + 20
+
+                                # Symbol +
+                                current_x += 10
+
+                                # c2
+                                panels.append({
+                                    "type": "constant",
+                                    "rows": 1,
+                                    "cols": 1,
+                                    "values": [[""]],
+                                    "active_cell": (-1, -1),
+                                    "x": current_x,
+                                    "y": self.height // 2 - Config.MATRIX_CELL_H // 2,
+                                    "label": "c2"
+                                })
+                                current_x += constant_width
+
+                                # Symbol ×
+                                current_x += 10
+
+                                # v2
+                                panels.append({
+                                    "type": "matrix",
+                                    "rows": rows_panel,
+                                    "cols": cols_panel,
+                                    "values": [["" for _ in range(cols_panel)] for _ in range(rows_panel)],
+                                    "active_cell": (-1, -1),
+                                    "x": current_x,
+                                    "y": self.height // 2 - (
+                                                rows_panel * (Config.MATRIX_CELL_H + Config.MATRIX_GAP)) // 2,
+                                    "label": "mat2"
+                                })
+
+                                pending_input_panel = {
+                                    "type": "matrix",
+                                    "operation": name,
+                                    "symbol": None,  # Budeme kresliť manuálne
+                                    "num_panels": len(panels),
+                                    "has_constant": False,
+                                    "panels": panels,
+                                    "active_panel": 0,
+                                    "is_linear_combination": True
+                                }
+
+                                break
+
                             else:
                                 symbol = None
                                 num_panels = 1
@@ -2660,15 +2825,21 @@ class Application:
 
                                         elif operation == "Násobenie Konštantou":
                                             mat = [[float(v) for v in row] for row in data_panels[0]["values"]]
-                                            result = [[constant * v for v in row] for row in mat]
+                                            result = [[constant[0] * v for v in row] for row in mat]
                                             operands = [mat]
                                             self.vector_manager.animation_controller.setup_operation(
                                                 'scalar_mult', operands, result, constant
                                             )
 
                                         elif operation == "Lineárna kombinácia":
-                                            # TODO: implementuj lineárnu kombináciu
-                                            pass
+                                            mat1 = [[float(v) for v in row] for row in data_panels[0]["values"]]
+                                            mat2 = [[float(v) for v in row] for row in data_panels[1]["values"]]
+                                            c1, c2 = constant[0], constant[1]
+                                            result = [[c1 * v1 + c2 * v2 for v1, v2 in zip(vec1, vec2)] for vec1, vec2 in zip(mat1, mat2)]
+                                            operands = [mat1, mat2]
+                                            self.vector_manager.animation_controller.setup_operation(
+                                                'linear_combination', operands, result, [c1, c2]
+                                            )
 
                                     pending_input_panel = None
 
@@ -3738,8 +3909,9 @@ class Application:
             ctrl = self.vector_manager.animation_controller
             math_info = ctrl.get_math_display_info()
 
-            if math_info and self.view_2d_mode:
+            if math_info:
                 self.render_math_display(math_info)
+
 
             is_matrix = ctrl._is_matrix(ctrl.operands[0]) if ctrl.operands else False
 
@@ -3819,6 +3991,14 @@ class Application:
         glPopMatrix()
         glMatrixMode(GL_MODELVIEW)
 
+    def _is_matrix(self, data):
+        """Check if data is a matrix (list of lists)"""
+        if not isinstance(data, (list, tuple)):
+            return False
+        if len(data) == 0:
+            return False
+        return isinstance(data[0], (list, tuple))
+
     def render_math_display(self, math_info):
         """Vykreslí matematické zobrazenie operácie v ľavom hornom rohu"""
         math_renderer = MathRenderer()
@@ -3832,6 +4012,8 @@ class Application:
         operands = math_info['operands']
         result = math_info['result']
         constant = math_info['constant']
+
+        is_matrix_op = self._is_matrix(operands[0]) if operands else False
 
         text_color = (1, 1, 1) if self.background_dark else (0, 0, 0)
 
@@ -3887,7 +4069,10 @@ class Application:
 
             elif step == 1:
                 # v1 - v2 = v1 + (-v2)
-                negated = [-x for x in operands[1]]
+                if is_matrix_op:
+                    negated = [[-x for x in row] for row in operands[1]]
+                else:
+                    negated = [-x for x in operands[1]]
                 current_x = math_renderer.draw_vector_math(current_x, start_y, operands[0],
                                                            color=(1, 0.5, 0), font_size=22, highlight=True)
                 current_x = math_renderer.draw_operator(current_x, start_y, "+",
@@ -3896,7 +4081,10 @@ class Application:
                                                            color=(1, 0, 0.5), font_size=22, highlight=True)
 
             elif step == 2:
-                negated = [-x for x in operands[1]]
+                if is_matrix_op:
+                    negated = [[-x for x in row] for row in operands[1]]
+                else:
+                    negated = [-x for x in operands[1]]
                 current_x = math_renderer.draw_vector_math(current_x, start_y, operands[0],
                                                            color=(1, 0.5, 0), font_size=22, highlight=True)
                 current_x = math_renderer.draw_operator(current_x, start_y, "+",
@@ -3912,7 +4100,10 @@ class Application:
                     color=(0.8, 0.8, 0.8), font_size=20)
 
             elif step == 3:
-                negated = [-x for x in operands[1]]
+                if is_matrix_op:
+                    negated = [[-x for x in row] for row in operands[1]]
+                else:
+                    negated = [-x for x in operands[1]]
                 current_x = math_renderer.draw_vector_math(current_x, start_y, operands[0],
                                                            color=(1, 0.5, 0), font_size=22, highlight=True)
                 current_x = math_renderer.draw_operator(current_x, start_y, "+",
@@ -3969,7 +4160,10 @@ class Application:
 
             elif step == 1:
                 # Highlight c1·v1
-                scaled_v1 = [c1 * x for x in operands[0]]
+                if is_matrix_op:
+                    scaled_v1 = [[c1 * x for x in row] for row in operands[0]]
+                else:
+                    scaled_v1 = [c1 * x for x in operands[0]]
                 current_x = math_renderer.draw_vector_math(current_x, start_y, scaled_v1,
                                                            color=(1, 0.5, 0), font_size=20, highlight=True)
                 current_x = math_renderer.draw_operator(current_x, start_y, "+",
@@ -3983,8 +4177,13 @@ class Application:
 
             elif step == 2:
                 # Oba vektory
-                scaled_v1 = [c1 * x for x in operands[0]]
-                scaled_v2 = [c2 * x for x in operands[1]]
+                if is_matrix_op:
+                    scaled_v1 = [[c1 * x for x in row] for row in operands[0]]
+                    scaled_v2 = [[c2 * x for x in row] for row in operands[1]]
+                else:
+                    scaled_v1 = [c1 * x for x in operands[0]]
+                    scaled_v2 = [c2 * x for x in operands[1]]
+
                 current_x = math_renderer.draw_vector_math(current_x, start_y, scaled_v1,
                                                            color=(1, 0.5, 0), font_size=20, highlight=True)
                 current_x = math_renderer.draw_operator(current_x, start_y, "+",
@@ -3994,8 +4193,12 @@ class Application:
 
             elif step == 3:
                 # c1.v1 (highlight) + c2.v2
-                scaled_v1 = [c1 * x for x in operands[0]]
-                scaled_v2 = [c2 * x for x in operands[1]]
+                if is_matrix_op:
+                    scaled_v1 = [[c1 * x for x in row] for row in operands[0]]
+                    scaled_v2 = [[c2 * x for x in row] for row in operands[1]]
+                else:
+                    scaled_v1 = [c1 * x for x in operands[0]]
+                    scaled_v2 = [c2 * x for x in operands[1]]
                 current_x = math_renderer.draw_vector_math(current_x, start_y, scaled_v1,
                                                            color=(1, 0.5, 0), font_size=20, highlight=True)
                 current_x = math_renderer.draw_operator(current_x, start_y, "+",
@@ -4013,8 +4216,12 @@ class Application:
 
             elif step == 4:
                 # Výsledok
-                scaled_v1 = [c1 * x for x in operands[0]]
-                scaled_v2 = [c2 * x for x in operands[1]]
+                if is_matrix_op:
+                    scaled_v1 = [[c1 * x for x in row] for row in operands[0]]
+                    scaled_v2 = [[c2 * x for x in row] for row in operands[1]]
+                else:
+                    scaled_v1 = [c1 * x for x in operands[0]]
+                    scaled_v2 = [c2 * x for x in operands[1]]
                 current_x = math_renderer.draw_vector_math(current_x, start_y, scaled_v1,
                                                            color=(1, 0.5, 0), font_size=20, highlight=True)
                 current_x = math_renderer.draw_operator(current_x, start_y, "+",
