@@ -1129,6 +1129,64 @@ class Camera:
         self.pan_speed = 0.01
         self.zoom_speed = 1.5
 
+        self.animating_to_plane = False
+        self.animation_progress = 0.0
+        self.animation_speed = 1.5
+        self.start_distance = self.distance
+        self.start_azimuth = self.azimuth
+        self.start_elevation = self.elevation
+        self.target_distance = self.distance
+        self.target_azimuth = self.azimuth
+        self.target_elevation = self.elevation
+
+    def move_to_plane(self, plane_type, distance=10.0, custom_view=None):
+        """Nastaví cieľovú pozíciu kamery pre danú rovinu"""
+        self.start_distance = self.distance
+        self.start_azimuth = self.azimuth
+        self.start_elevation = self.elevation
+        self.target_distance = distance
+
+        if custom_view:  # Pre 3D s vlastným výpočtom
+            self.target_azimuth = custom_view['azimuth']
+            self.target_elevation = custom_view['elevation']
+        elif plane_type == "XY":  # Z=0
+            self.target_azimuth = 0.0
+            self.target_elevation = 89.0
+        elif plane_type == "XZ":  # Y=0
+            self.target_azimuth = 0.0
+            self.target_elevation = 0.1
+        elif plane_type == "YZ":  # X=0
+            self.target_azimuth = 90.0
+            self.target_elevation = 0.1
+        else:  # Všeobecný 3D pohľad
+            self.target_azimuth = 45.0
+            self.target_elevation = 25.0
+
+        self.animating_to_plane = True
+        self.animation_progress = 0.0
+
+    def animate_to_plane(self, plane_type, dt):
+        """Plynulo animuje kameru do roviny (XY, XZ, YZ)"""
+        if not self.animating_to_plane:
+            return
+
+        self.animation_progress += dt * self.animation_speed
+
+        if self.animation_progress >= 1.0:
+            self.animation_progress = 1.0
+            self.animating_to_plane = False
+            self.distance = self.target_distance
+            self.azimuth = self.target_azimuth
+            self.elevation = self.target_elevation
+        else:
+            # Smooth interpolation (ease-in-out)
+            t = self.animation_progress
+            smooth_t = t * t * (3.0 - 2.0 * t)
+
+            self.distance = self.start_distance + (self.target_distance - self.start_distance) * smooth_t
+            self.azimuth = self.start_azimuth + (self.target_azimuth - self.start_azimuth) * smooth_t
+            self.elevation = self.start_elevation + (self.target_elevation - self.start_elevation) * smooth_t
+
     def get_position(self):
         """Vráti pozíciu kamery v 3D priestore"""
         self.width, self.height = pygame.display.get_window_size()
@@ -1429,6 +1487,112 @@ class AnimationController:
         self.source_vectors = []  # Vektory na začiatku animácie
         self.target_vectors = []  # Cieľové vektory
 
+        self.current_plane = None  # None, "XY", "XZ", "YZ", alebo "3D"
+
+    def compute_optimal_view_for_3d(self):
+        """Vypočíta optimálny uhol pohľadu pre 3D vektory pomocou PCA"""
+        if not self.operands:
+            return None
+
+        # Zozbieraj všetky body
+        points = []
+        for op in self.operands:
+            if isinstance(op[0], (list, tuple)):  # Matica
+                for row in op:
+                    vec3d = list(row) + [0] * (3 - len(row))
+                    points.append(vec3d[:3])
+            else:  # Vektor
+                vec3d = list(op) + [0] * (3 - len(op))
+                points.append(vec3d[:3])
+
+        # Pridaj aj výsledok ak existuje
+        if self.result:
+            if isinstance(self.result[0], (list, tuple)):
+                for row in self.result:
+                    vec3d = list(row) + [0] * (3 - len(row))
+                    points.append(vec3d[:3])
+            else:
+                vec3d = list(self.result) + [0] * (3 - len(self.result))
+                points.append(vec3d[:3])
+
+        if len(points) < 2:
+            return None
+
+        # Vypočítaj centroid
+        points_np = np.array(points)
+        centroid = np.mean(points_np, axis=0)
+
+        # Centroid bod do originu
+        centered = points_np - centroid
+
+        # PCA - nájdi hlavné smery
+        cov_matrix = np.cov(centered.T)
+        eigenvalues, eigenvectors = np.linalg.eig(cov_matrix)
+
+        # Zoraď podľa eigenvalues (najväčší = hlavný smer)
+        idx = eigenvalues.argsort()[::-1]
+        eigenvectors = eigenvectors[:, idx]
+
+        # Normálový vektor roviny = tretí eigenvektor (najmenší)
+        normal = eigenvectors[:, 2]
+
+        # Vypočítaj azimuth a elevation z normály
+        # Normála smeruje von z roviny, chceme sa pozerať proti nej
+        azimuth = np.degrees(np.arctan2(normal[0], normal[2]))
+        elevation = np.degrees(np.arcsin(normal[1] / np.linalg.norm(normal)))
+
+        # Prispôsob uhly pre lepší pohľad
+        elevation = max(15, min(75, elevation))  # Nie príliš plochý ani strmý
+
+        return {
+            'azimuth': azimuth,
+            'elevation': elevation,
+            'normal': normal.tolist()
+        }
+    def detect_operation_plane(self):
+        """Zistí v akej rovine sa operácia vykonáva"""
+        if not self.operands:
+            return "3D"
+
+        # Skontroluj prvý operand
+        vec = self.operands[0]
+        is_matrix = isinstance(vec[0], (list, tuple))
+
+        if is_matrix:
+            # Matica - skontroluj všetky vektory
+            all_z_zero = all((row[2] if len(row) > 2 else 0) == 0 for row in vec)
+            all_y_zero = all((row[1] if len(row) > 1 else 0) == 0 for row in vec)
+            all_x_zero = all(row[0] == 0 for row in vec)
+        else:
+            # Jednoduchý vektor
+            all_z_zero = (vec[2] if len(vec) > 2 else 0) == 0
+            all_y_zero = (vec[1] if len(vec) > 1 else 0) == 0
+            all_x_zero = vec[0] == 0
+
+        # Kontrola druhého operandu ak existuje
+        if len(self.operands) > 1:
+            vec2 = self.operands[1]
+            is_matrix2 = isinstance(vec2[0], (list, tuple))
+
+            if is_matrix2:
+                all_z_zero = all_z_zero and all((row[2] if len(row) > 2 else 0) == 0 for row in vec2)
+                all_y_zero = all_y_zero and all((row[1] if len(row) > 1 else 0) == 0 for row in vec2)
+                all_x_zero = all_x_zero and all(row[0] == 0 for row in vec2)
+            else:
+                all_z_zero = all_z_zero and ((vec2[2] if len(vec2) > 2 else 0) == 0)
+                all_y_zero = all_y_zero and ((vec2[1] if len(vec2) > 1 else 0) == 0)
+                all_x_zero = all_x_zero and (vec2[0] == 0)
+
+        # Urči rovinu
+        if all_z_zero:
+            return "XY"
+        elif all_y_zero:
+            return "XZ"
+        elif all_x_zero:
+            return "YZ"
+        else:
+            return "3D"
+
     def setup_operation(self, operation_type, operands, result, constant=None):
         """Setup a new operation for step-by-step visualization"""
         self.operation_type = operation_type
@@ -1455,6 +1619,8 @@ class AnimationController:
         self.source_vectors = self._get_vectors_for_step(0)
         self.target_vectors = self.source_vectors
         self.animation_progress = 1.0
+
+        self.current_plane = self.detect_operation_plane()
 
     def next_step(self):
         """Move to next step with animation"""
@@ -3072,6 +3238,23 @@ class Application:
         # KROKOVANIE ANIMÁCIE - má prioritu
         if event.key == pygame.K_SPACE:
             if self.vector_manager.animation_controller.current_operation:
+                # Pri prvom kroku nastav kameru
+                if self.vector_manager.animation_controller.current_step == 0 and not self.view_2d_mode:
+                    plane = self.vector_manager.animation_controller.current_plane
+                    if plane:
+                        max_val = self.get_max_from_vectors()
+                        # UPRAVENÉ: Väčší multiplikátor pre lepšie videnie celej scény
+                        distance = max(15.0, max_val * 3.5)  # Zmenené z 1.5 na 2.5
+
+                        if plane == "3D":
+                            optimal_view = self.vector_manager.animation_controller.compute_optimal_view_for_3d()
+                            if optimal_view:
+                                self.camera.move_to_plane(plane, distance, custom_view=optimal_view)
+                            else:
+                                self.camera.move_to_plane(plane, distance)
+                        else:
+                            self.camera.move_to_plane(plane, distance)
+
                 self.vector_manager.animation_controller.next_step()
             return
 
@@ -3092,6 +3275,16 @@ class Application:
 
         if event.key == pygame.K_c:
             self.vector_manager.animation_controller.clear()
+            return
+
+        if event.key == pygame.K_v:
+            if self.vector_manager.animation_controller.current_operation:
+                plane = self.vector_manager.animation_controller.current_plane
+                if plane and not self.view_2d_mode:
+                    max_val = self.get_max_from_vectors()
+                    # UPRAVENÉ: Väčší multiplikátor
+                    distance = max(15.0, max_val * 3.5)  # Zmenené z 1.5 na 2.5
+                    self.camera.move_to_plane(plane, distance)
             return
 
         # Potom existujúce checky...
@@ -3336,6 +3529,13 @@ class Application:
         """Aktualizuje stav aplikácie - ROZŠÍRENÉ"""
         # NEW: Update vector animations
         self.vector_manager.update_animations(dt)
+
+        # NOVÉ: Animuj kameru ak je v 3D režime
+        if not self.view_2d_mode and self.camera.animating_to_plane:
+            self.camera.animate_to_plane(
+                self.vector_manager.animation_controller.current_plane,
+                dt
+            )
 
     def render(self):
         """Vykreslí scénu"""
@@ -3982,6 +4182,18 @@ class Application:
             self.ui_renderer.draw_text_2d("SPACE=ďalší | BACKSPACE=späť | C=zrušiť",
                                           (self.width // 2 - 180, 75),
                                           color=text_color, font_size=16)
+        if self.vector_manager.animation_controller.current_operation:
+            plane = self.vector_manager.animation_controller.current_plane
+            if plane and not self.view_2d_mode:
+                plane_text = f"Rovina: {plane}"
+                text_color = (1, 1, 1) if self.background_dark else (0, 0, 0)
+                self.ui_renderer.draw_text_2d(plane_text, (self.width // 2 - 180, 95),
+                                              color=text_color, font_size=16)
+
+                if not self.camera.animating_to_plane:
+                    self.ui_renderer.draw_text_2d("V=zobraz rovinu",
+                                                  (self.width // 2 - 180, 115),
+                                                  color=text_color, font_size=14)
 
         glEnable(GL_DEPTH_TEST)
 
@@ -4234,19 +4446,69 @@ class Application:
                                                            color=(0, 1, 0), font_size=20, highlight=True)
 
     def get_max_from_vectors(self):
-        """Vráti najväčšiu hodnotu zo všetkých vektorov"""
-        # OPRAVA: Používaj vector_manager namiesto priameho prístupu
-        if not self.vector_manager.animated_vectors:
-            return 10.0
-
+        """Vráti najväčšiu hodnotu zo všetkých vektorov - S OFFSETMI"""
         max_val = 10.0
-        for v in self.vector_manager.animated_vectors:
-            vec = v['vec']
-            if isinstance(vec[0], (int, float)):
-                current_max = max(abs(x) for x in vec)
-            else:
-                current_max = max(max(abs(x) for x in row) for row in vec)
-            max_val = max(max_val, current_max)
+
+        # Skontroluj vektory z animation controllera (operácie)
+        if self.vector_manager.animation_controller.current_operation:
+            ctrl = self.vector_manager.animation_controller
+
+            # Všetky body ktoré sa v animácii objavia
+            all_points = []
+
+            # Pridaj origin
+            all_points.append([0, 0, 0])
+
+            # Všetky operandy a ich možné pozície
+            for operand in ctrl.operands:
+                if isinstance(operand[0], (int, float)):
+                    all_points.append(list(operand) + [0] * (3 - len(operand)))
+                else:
+                    for row in operand:
+                        all_points.append(list(row) + [0] * (3 - len(row)))
+
+            # Výsledok
+            if ctrl.result:
+                if isinstance(ctrl.result[0], (int, float)):
+                    all_points.append(list(ctrl.result) + [0] * (3 - len(ctrl.result)))
+                else:
+                    for row in ctrl.result:
+                        all_points.append(list(row) + [0] * (3 - len(row)))
+
+            # Pri sčítaní/odčítaní druhý vektor môže byť posunutý
+            if ctrl.operation_type in ['add', 'subtract'] and len(ctrl.operands) >= 2:
+                offset = ctrl.operands[0]
+                second = ctrl.operands[1]
+
+                if isinstance(offset[0], (int, float)) and isinstance(second[0], (int, float)):
+                    # Koncový bod druhého vektora posunutého na koniec prvého
+                    combined = [offset[i] + second[i] if i < len(offset) and i < len(second) else
+                                (offset[i] if i < len(offset) else second[i] if i < len(second) else 0)
+                                for i in range(3)]
+                    all_points.append(combined)
+                elif not isinstance(offset[0], (int, float)) and not isinstance(second[0], (int, float)):
+                    # Maticová operácia - každý riadok druhej matice posunutý
+                    for i, row1 in enumerate(offset):
+                        if i < len(second):
+                            row2 = second[i]
+                            combined = [row1[j] + row2[j] if j < len(row1) and j < len(row2) else
+                                        (row1[j] if j < len(row1) else row2[j] if j < len(row2) else 0)
+                                        for j in range(3)]
+                            all_points.append(combined)
+
+            # Nájdi maximum zo všetkých súradníc
+            if all_points:
+                max_val = max(max(abs(coord) for coord in point) for point in all_points)
+
+        # Skontroluj aj bežné vektory
+        if self.vector_manager.animated_vectors:
+            for v in self.vector_manager.animated_vectors:
+                vec = v['vec']
+                if isinstance(vec[0], (int, float)):
+                    current_max = max(abs(x) for x in vec)
+                else:
+                    current_max = max(max(abs(x) for x in row) for row in vec)
+                max_val = max(max_val, current_max)
 
         return max_val
 
