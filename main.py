@@ -1489,10 +1489,64 @@ class AnimationController:
 
         self.current_plane = None  # None, "XY", "XZ", "YZ", alebo "3D"
 
+    def compute_simple_view_for_vectors(self):
+        """Jednoduchší výpočet optimálneho pohľadu pre 2 vektory"""
+        if not self.operands or len(self.operands) < 2:
+            return None
+
+        # Získaj prvé 2 vektory
+        v1 = self.operands[0]
+        v2 = self.operands[1]
+
+        # Konvertuj na numpy 3D vektory
+        if isinstance(v1[0], (list, tuple)):
+            # Matica - vezmi prvý riadok
+            v1 = list(v1[0]) + [0] * (3 - len(v1[0]))
+        else:
+            v1 = list(v1) + [0] * (3 - len(v1))
+
+        if isinstance(v2[0], (list, tuple)):
+            # Matica - vezmi prvý riadok
+            v2 = list(v2[0]) + [0] * (3 - len(v2[0]))
+        else:
+            v2 = list(v2) + [0] * (3 - len(v2))
+
+        v1 = np.array(v1[:3])
+        v2 = np.array(v2[:3])
+
+        # Normálový vektor roviny = cross product
+        normal = np.cross(v1, v2)
+
+        if np.linalg.norm(normal) < 1e-6:
+            # Vektory sú paralelné - použijem default view
+            return None
+
+        normal = normal / np.linalg.norm(normal)
+
+        # Vypočítaj azimuth a elevation z normály
+        # Normála smeruje von z roviny, chceme sa pozerať proti nej
+        azimuth = np.degrees(np.arctan2(normal[0], normal[2]))
+        elevation = np.degrees(np.arcsin(np.clip(normal[1], -1.0, 1.0)))
+
+        # Prispôsob uhly pre lepší pohľad
+        elevation = max(15, min(75, abs(elevation)))
+
+        return {
+            'azimuth': azimuth,
+            'elevation': elevation,
+            'normal': normal.tolist()
+        }
+
     def compute_optimal_view_for_3d(self):
         """Vypočíta optimálny uhol pohľadu pre 3D vektory pomocou PCA"""
         if not self.operands:
             return None
+
+        # Pre jednoduché prípady (2 vektory) použi cross product
+        if len(self.operands) == 2:
+            simple_view = self.compute_simple_view_for_vectors()
+            if simple_view:
+                return simple_view
 
         # Zozbieraj všetky body
         points = []
@@ -1536,20 +1590,24 @@ class AnimationController:
         # Normálový vektor roviny = tretí eigenvektor (najmenší)
         normal = eigenvectors[:, 2]
 
+        # Zabezpeč že normála smeruje "hore"
+        if normal[1] < 0:
+            normal = -normal
+
         # Vypočítaj azimuth a elevation z normály
-        # Normála smeruje von z roviny, chceme sa pozerať proti nej
         azimuth = np.degrees(np.arctan2(normal[0], normal[2]))
-        elevation = np.degrees(np.arcsin(normal[1] / np.linalg.norm(normal)))
+        elevation = np.degrees(np.arcsin(np.clip(normal[1] / np.linalg.norm(normal), -1.0, 1.0)))
 
         # Prispôsob uhly pre lepší pohľad
-        elevation = max(15, min(75, elevation))  # Nie príliš plochý ani strmý
+        elevation = max(15, min(75, abs(elevation)))
 
         return {
             'azimuth': azimuth,
             'elevation': elevation,
             'normal': normal.tolist()
         }
-    def detect_operation_plane(self):
+
+    def detect_operation_plane(self, tolerance=1e-6):
         """Zistí v akej rovine sa operácia vykonáva"""
         if not self.operands:
             return "3D"
@@ -1560,14 +1618,14 @@ class AnimationController:
 
         if is_matrix:
             # Matica - skontroluj všetky vektory
-            all_z_zero = all((row[2] if len(row) > 2 else 0) == 0 for row in vec)
-            all_y_zero = all((row[1] if len(row) > 1 else 0) == 0 for row in vec)
-            all_x_zero = all(row[0] == 0 for row in vec)
+            all_z_zero = all(abs(row[2] if len(row) > 2 else 0) < tolerance for row in vec)
+            all_y_zero = all(abs(row[1] if len(row) > 1 else 0) < tolerance for row in vec)
+            all_x_zero = all(abs(row[0]) < tolerance for row in vec)
         else:
             # Jednoduchý vektor
-            all_z_zero = (vec[2] if len(vec) > 2 else 0) == 0
-            all_y_zero = (vec[1] if len(vec) > 1 else 0) == 0
-            all_x_zero = vec[0] == 0
+            all_z_zero = abs(vec[2] if len(vec) > 2 else 0) < tolerance
+            all_y_zero = abs(vec[1] if len(vec) > 1 else 0) < tolerance
+            all_x_zero = abs(vec[0]) < tolerance
 
         # Kontrola druhého operandu ak existuje
         if len(self.operands) > 1:
@@ -1575,13 +1633,13 @@ class AnimationController:
             is_matrix2 = isinstance(vec2[0], (list, tuple))
 
             if is_matrix2:
-                all_z_zero = all_z_zero and all((row[2] if len(row) > 2 else 0) == 0 for row in vec2)
-                all_y_zero = all_y_zero and all((row[1] if len(row) > 1 else 0) == 0 for row in vec2)
-                all_x_zero = all_x_zero and all(row[0] == 0 for row in vec2)
+                all_z_zero = all_z_zero and all(abs(row[2] if len(row) > 2 else 0) < tolerance for row in vec2)
+                all_y_zero = all_y_zero and all(abs(row[1] if len(row) > 1 else 0) < tolerance for row in vec2)
+                all_x_zero = all_x_zero and all(abs(row[0]) < tolerance for row in vec2)
             else:
-                all_z_zero = all_z_zero and ((vec2[2] if len(vec2) > 2 else 0) == 0)
-                all_y_zero = all_y_zero and ((vec2[1] if len(vec2) > 1 else 0) == 0)
-                all_x_zero = all_x_zero and (vec2[0] == 0)
+                all_z_zero = all_z_zero and (abs(vec2[2] if len(vec2) > 2 else 0) < tolerance)
+                all_y_zero = all_y_zero and (abs(vec2[1] if len(vec2) > 1 else 0) < tolerance)
+                all_x_zero = all_x_zero and (abs(vec2[0]) < tolerance)
 
         # Urči rovinu
         if all_z_zero:
@@ -2956,7 +3014,6 @@ class Application:
                                             )
 
                                         elif operation == "Lineárna kombinácia":
-                                            # constant = [c1, c2], data_panels = [v1, v2]
                                             vec1 = [float(v[0]) for v in data_panels[0]["values"]]
                                             vec2 = [float(v[0]) for v in data_panels[1]["values"]]
                                             c1, c2 = constant[0], constant[1]
@@ -2965,7 +3022,6 @@ class Application:
                                             self.vector_manager.animation_controller.setup_operation(
                                                 'linear_combination', operands, result, [c1, c2]
                                             )
-
 
                                     # MATICOVÉ OPERÁCIE
                                     else:
@@ -2994,18 +3050,35 @@ class Application:
                                             result = [[constant[0] * v for v in row] for row in mat]
                                             operands = [mat]
                                             self.vector_manager.animation_controller.setup_operation(
-                                                'scalar_mult', operands, result, constant
+                                                'scalar_mult', operands, result, constant[0]
                                             )
 
                                         elif operation == "Lineárna kombinácia":
                                             mat1 = [[float(v) for v in row] for row in data_panels[0]["values"]]
                                             mat2 = [[float(v) for v in row] for row in data_panels[1]["values"]]
                                             c1, c2 = constant[0], constant[1]
-                                            result = [[c1 * v1 + c2 * v2 for v1, v2 in zip(vec1, vec2)] for vec1, vec2 in zip(mat1, mat2)]
+                                            result = [[c1 * v1 + c2 * v2 for v1, v2 in zip(vec1, vec2)] for vec1, vec2
+                                                      in zip(mat1, mat2)]
                                             operands = [mat1, mat2]
                                             self.vector_manager.animation_controller.setup_operation(
                                                 'linear_combination', operands, result, [c1, c2]
                                             )
+
+                                    # ✅ IHNEĎ PO NASTAVENÍ OPERÁCIE PRESUŇ KAMERU
+                                    if not self.view_2d_mode:
+                                        plane = self.vector_manager.animation_controller.current_plane
+                                        if plane:
+                                            max_val = self.get_max_from_vectors()
+                                            distance = max(15.0, max_val * 3.5)
+
+                                            if plane == "3D":
+                                                optimal_view = self.vector_manager.animation_controller.compute_optimal_view_for_3d()
+                                                if optimal_view:
+                                                    self.camera.move_to_plane(plane, distance, custom_view=optimal_view)
+                                                else:
+                                                    self.camera.move_to_plane(plane, distance)
+                                            else:
+                                                self.camera.move_to_plane(plane, distance)
 
                                     pending_input_panel = None
 
@@ -3238,13 +3311,12 @@ class Application:
         # KROKOVANIE ANIMÁCIE - má prioritu
         if event.key == pygame.K_SPACE:
             if self.vector_manager.animation_controller.current_operation:
-                # Pri prvom kroku nastav kameru
+                # Pri prvom kroku nastav kameru (len ako backup)
                 if self.vector_manager.animation_controller.current_step == 0 and not self.view_2d_mode:
                     plane = self.vector_manager.animation_controller.current_plane
-                    if plane:
+                    if plane and not self.camera.animating_to_plane:
                         max_val = self.get_max_from_vectors()
-                        # UPRAVENÉ: Väčší multiplikátor pre lepšie videnie celej scény
-                        distance = max(15.0, max_val * 3.5)  # Zmenené z 1.5 na 2.5
+                        distance = max(15.0, max_val * 3.5)
 
                         if plane == "3D":
                             optimal_view = self.vector_manager.animation_controller.compute_optimal_view_for_3d()
