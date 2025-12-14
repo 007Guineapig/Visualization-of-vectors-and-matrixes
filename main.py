@@ -758,7 +758,17 @@ class VectorRenderer:
                         v['segments'].append(z_seg)
 
                     t = (v['progress'] - 0.75) / 0.25
-                    px, py, pz = ex * t, ey * t, ez * t
+                    # Skráť vektor aby čiara nezasahovala do šípky
+                    vec = np.array([ex * t, ey * t, ez * t])
+                    length = np.linalg.norm(vec)
+                    delta = 0.15
+
+                    if length > delta:
+                        vec_short = vec * (length - delta) / length
+                    else:
+                        vec_short = vec
+
+                    px, py, pz = vec_short
 
                     radius = VectorRenderer.compute_radius((0, 0, 0), (px, py, pz), base_max_radius,
                                                            min_radius, camera_pos, reference_distance)
@@ -825,7 +835,7 @@ class VectorRenderer:
                         t = (v['row_progress'][i] - 0.75) / 0.25
                         vec = np.array([ex * t, ey * t, ez * t])
                         length = np.linalg.norm(vec)
-                        delta = 0.5
+                        delta = 0.15
 
                         if length > delta:
                             vec_short = vec * (length - delta) / length
@@ -1480,6 +1490,7 @@ class AnimationController:
         self.constant = None
         self.math_display_step = 0
 
+        self.RESULT_COLOR = (0.5, 0, 0.5)
         # Animačný stav
         self.animating = False
         self.animation_progress = 0.0
@@ -1488,6 +1499,133 @@ class AnimationController:
         self.target_vectors = []  # Cieľové vektory
 
         self.current_plane = None  # None, "XY", "XZ", "YZ", alebo "3D"
+
+    def compute_optimal_view_for_current_step(self):
+        """Vypočíta optimálnu pozíciu kamery pre aktuálny krok animácie"""
+        if not self.current_operation:
+            return None
+
+        # Získaj vektory pre aktuálny krok
+        current_vectors = self._get_vectors_for_step(self.current_step)
+
+        if not current_vectors:
+            return None
+
+        # Zozbieraj všetky viditeľné body (s offsetmi)
+        points = []
+
+        for v in current_vectors:
+            vec = v['vec']
+            offset = v.get('offset', [0, 0, 0])
+            alpha = v.get('alpha', 1.0)
+
+            # Ignoruj úplne priesvitné vektory (alpha < 0.2)
+            if alpha < 0.2:
+                continue
+
+            if isinstance(vec[0], (int, float)):
+                # Jednoduchý vektor
+                vec3d = list(vec) + [0] * (3 - len(vec))
+                vec3d = vec3d[:3]
+                # Pridaj aj koncový bod vektora s offsetom
+                end_point = [vec3d[i] + offset[i] for i in range(3)]
+                points.append(end_point)
+                # Pridaj aj origin ak je offset nenulový
+                if any(abs(o) > 1e-6 for o in offset):
+                    points.append(offset[:3])
+            else:
+                # Matica
+                row_offsets = v.get('row_offsets', None)
+                for i, row in enumerate(vec):
+                    vec3d = list(row) + [0] * (3 - len(row))
+                    vec3d = vec3d[:3]
+
+                    if row_offsets and i < len(row_offsets):
+                        row_offset = row_offsets[i][:3]
+                    else:
+                        row_offset = offset[:3]
+
+                    # Koncový bod
+                    end_point = [vec3d[j] + row_offset[j] for j in range(3)]
+                    points.append(end_point)
+                    # Origin
+                    if any(abs(o) > 1e-6 for o in row_offset):
+                        points.append(row_offset)
+
+        # Pridaj origin
+        points.append([0, 0, 0])
+
+        if len(points) < 2:
+            return None
+
+        # Pre jednoduché prípady (2-3 body) použi cross product
+        if len(points) <= 4 and len(current_vectors) <= 2:
+            # Skús nájsť 2 nenulové vektory
+            vectors_for_cross = []
+            for v in current_vectors:
+                vec = v['vec']
+                if isinstance(vec[0], (int, float)):
+                    vec3d = list(vec) + [0] * (3 - len(vec))
+                    if sum(abs(x) for x in vec3d[:3]) > 1e-6:
+                        vectors_for_cross.append(vec3d[:3])
+                else:
+                    for row in vec:
+                        vec3d = list(row) + [0] * (3 - len(row))
+                        if sum(abs(x) for x in vec3d[:3]) > 1e-6:
+                            vectors_for_cross.append(vec3d[:3])
+
+                if len(vectors_for_cross) >= 2:
+                    break
+
+            if len(vectors_for_cross) >= 2:
+                v1 = np.array(vectors_for_cross[0])
+                v2 = np.array(vectors_for_cross[1])
+
+                normal = np.cross(v1, v2)
+
+                if np.linalg.norm(normal) > 1e-6:
+                    normal = normal / np.linalg.norm(normal)
+
+                    # Zabezpeč že normála smeruje "hore"
+                    if normal[1] < 0:
+                        normal = -normal
+
+                    azimuth = np.degrees(np.arctan2(normal[0], normal[2]))
+                    elevation = np.degrees(np.arcsin(np.clip(normal[1], -1.0, 1.0)))
+                    elevation = max(15, min(75, abs(elevation)))
+
+                    return {
+                        'azimuth': azimuth,
+                        'elevation': elevation,
+                        'normal': normal.tolist()
+                    }
+
+        # PCA pre zložitejšie prípady
+        points_np = np.array(points)
+        centroid = np.mean(points_np, axis=0)
+        centered = points_np - centroid
+
+        cov_matrix = np.cov(centered.T)
+        eigenvalues, eigenvectors = np.linalg.eig(cov_matrix)
+
+        idx = eigenvalues.argsort()[::-1]
+        eigenvectors = eigenvectors[:, idx]
+
+        normal = eigenvectors[:, 2]
+
+        # Zabezpeč že normála smeruje "hore"
+        if normal[1] < 0:
+            normal = -normal
+
+        azimuth = np.degrees(np.arctan2(normal[0], normal[2]))
+        elevation = np.degrees(np.arcsin(np.clip(normal[1] / np.linalg.norm(normal), -1.0, 1.0)))
+        elevation = max(15, min(75, abs(elevation)))
+
+        return {
+            'azimuth': azimuth,
+            'elevation': elevation,
+            'normal': normal.tolist()
+        }
 
     def compute_simple_view_for_vectors(self):
         """Jednoduchší výpočet optimálneho pohľadu pre 2 vektory"""
@@ -1899,7 +2037,7 @@ class AnimationController:
                 vectors.append({
                     'vec': self.result,
                     'offset': [0, 0, 0],
-                    'color': (0, 1, 0),
+                    'color': self.RESULT_COLOR,
                     'alpha': 1.0,
                     'label': 'A + B' if is_matrix_op else 'v1 + v2'
                 })
@@ -2005,7 +2143,7 @@ class AnimationController:
                 vectors.append({
                     'vec': self.result,
                     'offset': [0, 0, 0],
-                    'color': (0, 1, 0),
+                    'color': self.RESULT_COLOR,
                     'alpha': 1.0,
                     'label': 'A - B' if is_matrix_op else 'v1 - v2'
                 })
@@ -2023,7 +2161,7 @@ class AnimationController:
                 vectors.append({
                     'vec': self.result,
                     'offset': [0, 0, 0],
-                    'color': (0, 1, 0),
+                    'color': self.RESULT_COLOR,
                     'label': label
                 })
         # V _get_vectors_for_step pridaj (pred_return vectors):
@@ -2192,7 +2330,7 @@ class AnimationController:
                 vectors.append({
                     'vec': self.result,
                     'offset': [0, 0, 0],
-                    'color': (0, 1, 0),
+                    'color': self.RESULT_COLOR,
                     'label': f'{c1}·v1 + {c2}·v2'
                 })
 
@@ -2393,9 +2531,11 @@ class Application:
         pygame.display.gl_set_attribute(pygame.GL_MULTISAMPLEBUFFERS, 1)
         pygame.display.gl_set_attribute(pygame.GL_MULTISAMPLESAMPLES, 4)
 
+        self.RESULT_COLOR = (0.5, 0, 0.5)
         self.screen = pygame.display.set_mode((900, 700), DOUBLEBUF | OPENGL | RESIZABLE)
         #self.width = self.screen.get_width()
         #self.height = self.screen.get_height()
+
         self.width,self.height = pygame.display.get_window_size()
 
         pygame.display.set_caption("XYZ axes — OOP Version")
@@ -3311,23 +3451,31 @@ class Application:
         # KROKOVANIE ANIMÁCIE - má prioritu
         if event.key == pygame.K_SPACE:
             if self.vector_manager.animation_controller.current_operation:
-                # Pri prvom kroku nastav kameru (len ako backup)
-                if self.vector_manager.animation_controller.current_step == 0 and not self.view_2d_mode:
+                # ✅ NAJPRV KROKUJ
+                self.vector_manager.animation_controller.next_step()
+
+                # ✅ POTOM PRESUŇ KAMERU PRE NOVÝ KROK
+                if not self.view_2d_mode:
                     plane = self.vector_manager.animation_controller.current_plane
-                    if plane and not self.camera.animating_to_plane:
+                    if plane:
                         max_val = self.get_max_from_vectors()
                         distance = max(15.0, max_val * 3.5)
 
                         if plane == "3D":
-                            optimal_view = self.vector_manager.animation_controller.compute_optimal_view_for_3d()
+                            # Vypočítaj optimálny pohľad pre aktuálny krok
+                            optimal_view = self.vector_manager.animation_controller.compute_optimal_view_for_current_step()
                             if optimal_view:
                                 self.camera.move_to_plane(plane, distance, custom_view=optimal_view)
                             else:
-                                self.camera.move_to_plane(plane, distance)
+                                # Fallback na pôvodnú metódu
+                                optimal_view = self.vector_manager.animation_controller.compute_optimal_view_for_3d()
+                                if optimal_view:
+                                    self.camera.move_to_plane(plane, distance, custom_view=optimal_view)
+                                else:
+                                    self.camera.move_to_plane(plane, distance)
                         else:
+                            # Pre XY, XZ, YZ roviny použijem štandardný pohľad
                             self.camera.move_to_plane(plane, distance)
-
-                self.vector_manager.animation_controller.next_step()
             return
 
         # BACKSPACE má špeciálnu logiku - ak nie je aktívny žiadny input, použije sa na krokovanie
@@ -3342,7 +3490,28 @@ class Application:
             ]):
                 # Ak nie je aktívny input, použije sa na krokovanie
                 if self.vector_manager.animation_controller.current_operation:
+                    # ✅ NAJPRV KROKUJ SPÄŤ
                     self.vector_manager.animation_controller.prev_step()
+
+                    # ✅ POTOM PRESUŇ KAMERU PRE NOVÝ KROK
+                    if not self.view_2d_mode:
+                        plane = self.vector_manager.animation_controller.current_plane
+                        if plane:
+                            max_val = self.get_max_from_vectors()
+                            distance = max(15.0, max_val * 3.5)
+
+                            if plane == "3D":
+                                optimal_view = self.vector_manager.animation_controller.compute_optimal_view_for_current_step()
+                                if optimal_view:
+                                    self.camera.move_to_plane(plane, distance, custom_view=optimal_view)
+                                else:
+                                    optimal_view = self.vector_manager.animation_controller.compute_optimal_view_for_3d()
+                                    if optimal_view:
+                                        self.camera.move_to_plane(plane, distance, custom_view=optimal_view)
+                                    else:
+                                        self.camera.move_to_plane(plane, distance)
+                            else:
+                                self.camera.move_to_plane(plane, distance)
                     return
 
         if event.key == pygame.K_c:
@@ -3354,9 +3523,17 @@ class Application:
                 plane = self.vector_manager.animation_controller.current_plane
                 if plane and not self.view_2d_mode:
                     max_val = self.get_max_from_vectors()
-                    # UPRAVENÉ: Väčší multiplikátor
-                    distance = max(15.0, max_val * 3.5)  # Zmenené z 1.5 na 2.5
-                    self.camera.move_to_plane(plane, distance)
+                    distance = max(15.0, max_val * 3.5)
+
+                    # ✅ POUŽIJEM AKTUÁLNY KROK
+                    if plane == "3D":
+                        optimal_view = self.vector_manager.animation_controller.compute_optimal_view_for_current_step()
+                        if optimal_view:
+                            self.camera.move_to_plane(plane, distance, custom_view=optimal_view)
+                        else:
+                            self.camera.move_to_plane(plane, distance)
+                    else:
+                        self.camera.move_to_plane(plane, distance)
             return
 
         # Potom existujúce checky...
@@ -3926,16 +4103,28 @@ class Application:
                     if isinstance(vec[0], (int, float)):
                         glPushMatrix()
                         glTranslatef(offset[0], offset[1], offset[2])
+
+                        # Skráť vektor aby čiara nezasahovala do šípky
+                        end_point = (vec[0], vec[1] if len(vec) > 1 else 0, vec[2] if len(vec) > 2 else 0)
+                        vec_array = np.array(end_point)
+                        length = np.linalg.norm(vec_array)
+                        delta = 0.15
+
+                        if length > delta:
+                            vec_short = vec_array * (length - delta) / length
+                        else:
+                            vec_short = vec_array
+
                         glLineWidth(6)
                         glColor3f(*v_color)
                         glBegin(GL_LINES)
                         glVertex3f(0, 0, 0)
-                        glVertex3f(vec[0], vec[1] if len(vec) > 1 else 0, vec[2] if len(vec) > 2 else 0)
+                        glVertex3f(vec_short[0], vec_short[1], vec_short[2])
                         glEnd()
-                        end_point = (vec[0], vec[1] if len(vec) > 1 else 0, vec[2] if len(vec) > 2 else 0)
+
                         self.vector_renderer.draw_conehead_3d((0, 0, 0), end_point,
-                                                              color=v_color, size=0.3,
-                                                              camera_pos=cam_pos, radius=0.3,
+                                                              color=v_color, size=0.7,
+                                                              camera_pos=cam_pos, radius=0.25,
                                                               alpha=v_alpha)
                         glPopMatrix()
                     else:
@@ -3947,20 +4136,30 @@ class Application:
                                 glTranslatef(ro[0], ro[1], ro[2])
                             else:
                                 glTranslatef(offset[0], offset[1], offset[2])
+
+                            # Skráť vektor aby čiara nezasahovala do šípky
+                            end_point = (row[0] if len(row) > 0 else 0,
+                                         row[1] if len(row) > 1 else 0,
+                                         row[2] if len(row) > 2 else 0)
+                            vec_array = np.array(end_point)
+                            length = np.linalg.norm(vec_array)
+                            delta = 0.15
+
+                            if length > delta:
+                                vec_short = vec_array * (length - delta) / length
+                            else:
+                                vec_short = vec_array
+
                             glLineWidth(6)
                             glColor3f(*v_color)
                             glBegin(GL_LINES)
                             glVertex3f(0, 0, 0)
-                            glVertex3f(row[0] if len(row) > 0 else 0,
-                                       row[1] if len(row) > 1 else 0,
-                                       row[2] if len(row) > 2 else 0)
+                            glVertex3f(vec_short[0], vec_short[1], vec_short[2])
                             glEnd()
-                            end_point = (row[0] if len(row) > 0 else 0,
-                                         row[1] if len(row) > 1 else 0,
-                                         row[2] if len(row) > 2 else 0)
+
                             self.vector_renderer.draw_conehead_3d((0, 0, 0), end_point,
-                                                                  color=v_color, size=0.3,
-                                                                  camera_pos=cam_pos, radius=0.3,
+                                                                  color=v_color, size=0.7,
+                                                                  camera_pos=cam_pos, radius=0.25,
                                                                   alpha=v_alpha)
                             glPopMatrix()
 
@@ -3975,19 +4174,31 @@ class Application:
                     if isinstance(vec[0], (int, float)):
                         glPushMatrix()
                         glTranslatef(offset[0], offset[1], offset[2])
+
+                        # Skráť vektor aby čiara nezasahovala do šípky
+                        end_point = (vec[0], vec[1] if len(vec) > 1 else 0, vec[2] if len(vec) > 2 else 0)
+                        vec_array = np.array(end_point)
+                        length = np.linalg.norm(vec_array)
+                        delta = 0.15
+
+                        if length > delta:
+                            vec_short = vec_array * (length - delta) / length
+                        else:
+                            vec_short = vec_array
+
                         glLineWidth(6)
                         glEnable(GL_BLEND)
                         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
                         glColor4f(v_color[0], v_color[1], v_color[2], v_alpha)
                         glBegin(GL_LINES)
                         glVertex3f(0, 0, 0)
-                        glVertex3f(vec[0], vec[1] if len(vec) > 1 else 0, vec[2] if len(vec) > 2 else 0)
+                        glVertex3f(vec_short[0], vec_short[1], vec_short[2])
                         glEnd()
                         glDisable(GL_BLEND)
-                        end_point = (vec[0], vec[1] if len(vec) > 1 else 0, vec[2] if len(vec) > 2 else 0)
+
                         self.vector_renderer.draw_conehead_3d((0, 0, 0), end_point,
-                                                              color=v_color, size=0.3,
-                                                              camera_pos=cam_pos, radius=0.3,
+                                                              color=v_color, size=0.7,
+                                                              camera_pos=cam_pos, radius=0.25,
                                                               alpha=v_alpha)
                         glPopMatrix()
                     else:
@@ -3999,23 +4210,33 @@ class Application:
                                 glTranslatef(ro[0], ro[1], ro[2])
                             else:
                                 glTranslatef(offset[0], offset[1], offset[2])
+
+                            # Skráť vektor aby čiara nezasahovala do šípky
+                            end_point = (row[0] if len(row) > 0 else 0,
+                                         row[1] if len(row) > 1 else 0,
+                                         row[2] if len(row) > 2 else 0)
+                            vec_array = np.array(end_point)
+                            length = np.linalg.norm(vec_array)
+                            delta = 0.15
+
+                            if length > delta:
+                                vec_short = vec_array * (length - delta) / length
+                            else:
+                                vec_short = vec_array
+
                             glLineWidth(6)
                             glEnable(GL_BLEND)
                             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
                             glColor4f(v_color[0], v_color[1], v_color[2], v_alpha)
                             glBegin(GL_LINES)
                             glVertex3f(0, 0, 0)
-                            glVertex3f(row[0] if len(row) > 0 else 0,
-                                       row[1] if len(row) > 1 else 0,
-                                       row[2] if len(row) > 2 else 0)
+                            glVertex3f(vec_short[0], vec_short[1], vec_short[2])
                             glEnd()
                             glDisable(GL_BLEND)
-                            end_point = (row[0] if len(row) > 0 else 0,
-                                         row[1] if len(row) > 1 else 0,
-                                         row[2] if len(row) > 2 else 0)
+
                             self.vector_renderer.draw_conehead_3d((0, 0, 0), end_point,
-                                                                  color=v_color, size=0.3,
-                                                                  camera_pos=cam_pos, radius=0.3,
+                                                                  color=v_color, size=0.7,
+                                                                  camera_pos=cam_pos, radius=0.25,
                                                                   alpha=v_alpha)
                             glPopMatrix()
                 glDepthMask(GL_TRUE)
@@ -4050,13 +4271,95 @@ class Application:
                                 vec3d = [base[j] + offset[j] for j in range(3)]
                             self.vector_renderer.draw_sphere(vec3d, radius=radius, color=v_color, alpha=v_alpha)
             else:
+                # Nešanimované vektory so šípkami
                 cam_pos = self.camera.get_position()
-                VectorRenderer.draw_vectors_3d_animated(
-                    self.vector_manager.animated_vectors,
-                    self.clock.get_time() / 1000.0,
-                    camera_pos=cam_pos,
-                    color=color
-                )
+
+                for v in self.vector_manager.animated_vectors:
+                    vec = v['vec']
+                    v_color = v.get('color', color)
+                    v_alpha = v.get('alpha', 1.0)
+                    offset = v.get('offset', [0, 0, 0])
+
+                    if isinstance(vec[0], (int, float)):
+                        glPushMatrix()
+                        glTranslatef(offset[0], offset[1], offset[2])
+
+                        # Skráť vektor aby čiara nezasahovala do šípky
+                        end_point = (vec[0], vec[1] if len(vec) > 1 else 0, vec[2] if len(vec) > 2 else 0)
+                        vec_array = np.array(end_point)
+                        length = np.linalg.norm(vec_array)
+                        delta = 0.15
+
+                        if length > delta:
+                            vec_short = vec_array * (length - delta) / length
+                        else:
+                            vec_short = vec_array
+
+                        glLineWidth(6)
+                        if v_alpha < 1.0:
+                            glEnable(GL_BLEND)
+                            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+                            glColor4f(v_color[0], v_color[1], v_color[2], v_alpha)
+                        else:
+                            glColor3f(*v_color)
+
+                        glBegin(GL_LINES)
+                        glVertex3f(0, 0, 0)
+                        glVertex3f(vec_short[0], vec_short[1], vec_short[2])
+                        glEnd()
+
+                        if v_alpha < 1.0:
+                            glDisable(GL_BLEND)
+
+                        self.vector_renderer.draw_conehead_3d((0, 0, 0), end_point,
+                                                              color=v_color, size=0.7,
+                                                              camera_pos=cam_pos, radius=0.25,
+                                                              alpha=v_alpha)
+                        glPopMatrix()
+                    else:
+                        row_offsets = v.get('row_offsets', None)
+                        for i, row in enumerate(vec):
+                            glPushMatrix()
+                            if row_offsets:
+                                ro = row_offsets[i]
+                                glTranslatef(ro[0], ro[1], ro[2])
+                            else:
+                                glTranslatef(offset[0], offset[1], offset[2])
+
+                            # Skráť vektor aby čiara nezasahovala do šípky
+                            end_point = (row[0] if len(row) > 0 else 0,
+                                         row[1] if len(row) > 1 else 0,
+                                         row[2] if len(row) > 2 else 0)
+                            vec_array = np.array(end_point)
+                            length = np.linalg.norm(vec_array)
+                            delta = 0.15
+
+                            if length > delta:
+                                vec_short = vec_array * (length - delta) / length
+                            else:
+                                vec_short = vec_array
+
+                            glLineWidth(6)
+                            if v_alpha < 1.0:
+                                glEnable(GL_BLEND)
+                                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+                                glColor4f(v_color[0], v_color[1], v_color[2], v_alpha)
+                            else:
+                                glColor3f(*v_color)
+
+                            glBegin(GL_LINES)
+                            glVertex3f(0, 0, 0)
+                            glVertex3f(vec_short[0], vec_short[1], vec_short[2])
+                            glEnd()
+
+                            if v_alpha < 1.0:
+                                glDisable(GL_BLEND)
+
+                            self.vector_renderer.draw_conehead_3d((0, 0, 0), end_point,
+                                                                  color=v_color, size=0.7,
+                                                                  camera_pos=cam_pos, radius=0.25,
+                                                                  alpha=v_alpha)
+                            glPopMatrix()
 
     def render_ui(self):
         """Vykreslí UI overlay - ROZŠÍRENÉ S LEPŠÍMI POPISMI"""
@@ -4339,7 +4642,7 @@ class Application:
                 current_x = math_renderer.draw_equals(current_x, start_y,
                                                       color=text_color, font_size=28)
                 current_x = math_renderer.draw_vector_math(current_x, start_y, result,
-                                                           color=(0, 1, 0), font_size=22, highlight=True)
+                                                           color= self.RESULT_COLOR, font_size=22, highlight=True)
 
         # ODČÍTANIE
         elif op_type == 'subtract':
@@ -4397,7 +4700,7 @@ class Application:
                 current_x = math_renderer.draw_equals(current_x, start_y,
                                                       color=text_color, font_size=28)
                 current_x = math_renderer.draw_vector_math(current_x, start_y, result,
-                                                           color=(0, 1, 0), font_size=22, highlight=True)
+                                                           color= self.RESULT_COLOR, font_size=22, highlight=True)
 
         # NÁSOBENIE KONŠTANTOU
         elif op_type == 'scalar_mult':
@@ -4419,7 +4722,7 @@ class Application:
                 current_x = math_renderer.draw_equals(current_x, start_y,
                                                       color=text_color, font_size=28)
                 current_x = math_renderer.draw_vector_math(current_x, start_y, result,
-                                                           color=(0, 1, 0), font_size=22, highlight=True)
+                                                           color= self.RESULT_COLOR, font_size=22, highlight=True)
 
         # LINEÁRNA KOMBINÁCIA
         elif op_type == 'linear_combination':
