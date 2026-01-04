@@ -1483,7 +1483,7 @@ class GridRenderer:
     _plane_tangents_cache = {}
 
     @staticmethod
-    def draw_filled_plane(normal, center=(0, 0, 0), size=10.0, color=(0.5, 0.5, 0.0), alpha=0.3):
+    def draw_filled_plane(normal, center=(0, 0, 0), size=10.0, color=(0.5, 0.5, 0.0), alpha=1.0, transparent=False):
         """Nakreslí vyplnenú rovinu definovanú normálou"""
         normal = np.array(normal, dtype=np.float32)
         norm_length = np.linalg.norm(normal)
@@ -1510,12 +1510,17 @@ class GridRenderer:
         corner3 = center + tangent1 * size + tangent2 * size
         corner4 = center - tangent1 * size + tangent2 * size
 
-        # Nakresli vyplnenú rovinu
-        glEnable(GL_BLEND)
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-        glDepthMask(GL_FALSE)
+        # Posuň rovinu mierne dozadu aby vektory boli vždy viditeľné
+        glEnable(GL_POLYGON_OFFSET_FILL)
+        glPolygonOffset(1.0, 1.0)  # Posunie rovinu mierne dozadu v depth bufferi
 
-        glColor4f(color[0], color[1], color[2], alpha)
+        if transparent:
+            glEnable(GL_BLEND)
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+            glColor4f(color[0], color[1], color[2], alpha)
+        else:
+            glColor3f(color[0], color[1], color[2])
+
         glBegin(GL_QUADS)
         glVertex3f(corner1[0], corner1[1], corner1[2])
         glVertex3f(corner2[0], corner2[1], corner2[2])
@@ -1523,8 +1528,10 @@ class GridRenderer:
         glVertex3f(corner4[0], corner4[1], corner4[2])
         glEnd()
 
-        glDepthMask(GL_TRUE)
-        glDisable(GL_BLEND)
+        glDisable(GL_POLYGON_OFFSET_FILL)
+
+        if transparent:
+            glDisable(GL_BLEND)
 
     @staticmethod
     def draw_grid_2d(ortho_scale, pan_x, pan_y, width, height, step=1.0, z=-0.1, max_lines=100):
@@ -1642,7 +1649,7 @@ class GridRenderer:
         glPushAttrib(GL_DEPTH_BUFFER_BIT)
         glDepthFunc(GL_LEQUAL)
         glEnable(GL_POLYGON_OFFSET_LINE)
-        glPolygonOffset(-2.0, -2.0)
+        glPolygonOffset(1.0, 1.0)  # Posunie grid dozadu
 
         glLineWidth(2.0)
         glBegin(GL_LINES)
@@ -1683,6 +1690,10 @@ class GridRenderer:
     @staticmethod
     def draw_planes_3d(size=2.0, step=1.0, colored=False):
         """Nakreslí 3D plochy - OPTIMALIZOVANÉ"""
+        # Posuň plochy dozadu aby vektory boli vždy viditeľné
+        glEnable(GL_POLYGON_OFFSET_FILL)
+        glPolygonOffset(2.0, 2.0)  # Väčší offset pre plochy
+
         # Farby pre plochy
         if colored:
             plane_color = (0.8, 0.8, 0.8)
@@ -1727,11 +1738,13 @@ class GridRenderer:
         glVertex3f(0, -size, size)
         glEnd()
 
+        glDisable(GL_POLYGON_OFFSET_FILL)
+
         # Grid čiary s agresívnejším offsetom
         glPushAttrib(GL_DEPTH_BUFFER_BIT)
         glDepthFunc(GL_LEQUAL)
         glEnable(GL_POLYGON_OFFSET_LINE)
-        glPolygonOffset(-3.0, -3.0)
+        glPolygonOffset(1.5, 1.5)
 
         glColor3f(0, 0, 0)
         glLineWidth(1.5)
@@ -1770,6 +1783,71 @@ class GridRenderer:
         glDisable(GL_POLYGON_OFFSET_LINE)
         glPopAttrib()
 
+    @staticmethod
+    def draw_grid_in_plane(normal, center=(0, 0, 0), size=10.0, step=1.0, color=(0.4, 0.4, 0.4)):
+        """Nakreslí grid v ľubovoľnej rovine definovanej normálou - OPTIMALIZOVANÉ"""
+        # Normalizuj normálu
+        normal = np.array(normal, dtype=np.float32)
+        norm_length = np.linalg.norm(normal)
+        if norm_length < 1e-6:
+            return
+        normal = normal / norm_length
+
+        # Cache key pre tangent vektory
+        normal_key = (round(normal[0], 4), round(normal[1], 4), round(normal[2], 4))
+
+        if normal_key in GridRenderer._plane_tangents_cache:
+            tangent1, tangent2 = GridRenderer._plane_tangents_cache[normal_key]
+        else:
+            # Nájdi dva kolmé vektory v rovine
+            if abs(normal[2]) < 0.9:
+                ref = np.array([0, 0, 1], dtype=np.float32)
+            else:
+                ref = np.array([1, 0, 0], dtype=np.float32)
+
+            tangent1 = np.cross(normal, ref)
+            tangent1 = tangent1 / np.linalg.norm(tangent1)
+            tangent2 = np.cross(normal, tangent1)
+            tangent2 = tangent2 / np.linalg.norm(tangent2)
+
+            # Ulož do cache
+            GridRenderer._plane_tangents_cache[normal_key] = (tangent1.copy(), tangent2.copy())
+
+        center = np.array(center, dtype=np.float32)
+
+        # Nakresli grid s polygon offset
+        glPushAttrib(GL_LINE_BIT | GL_CURRENT_BIT | GL_DEPTH_BUFFER_BIT)
+        glDepthFunc(GL_LEQUAL)
+        glEnable(GL_POLYGON_OFFSET_LINE)
+        glPolygonOffset(1.0, 1.0)
+
+        glLineWidth(1.5)
+        glColor3f(color[0], color[1], color[2])
+        glBegin(GL_LINES)
+
+        size_int = int(size)
+        step_int = max(1, int(step))
+
+        # Čiary pozdĺž tangent1
+        for i in range(-size_int, size_int + 1, step_int):
+            t = float(i)
+            p1 = center + tangent1 * (-size) + tangent2 * t
+            p2 = center + tangent1 * size + tangent2 * t
+            glVertex3f(p1[0], p1[1], p1[2])
+            glVertex3f(p2[0], p2[1], p2[2])
+
+        # Čiary pozdĺž tangent2
+        for i in range(-size_int, size_int + 1, step_int):
+            t = float(i)
+            p1 = center + tangent1 * t + tangent2 * (-size)
+            p2 = center + tangent1 * t + tangent2 * size
+            glVertex3f(p1[0], p1[1], p1[2])
+            glVertex3f(p2[0], p2[1], p2[2])
+
+        glEnd()
+
+        glDisable(GL_POLYGON_OFFSET_LINE)
+        glPopAttrib()
     @classmethod
     def clear_cache(cls):
         """Vymaže cache - volať pri zmene scény"""
@@ -4676,7 +4754,36 @@ class Application:
 
         length_xyz = max(10, self.get_max_from_vectors())
 
-        # Draw grid/planes
+        # ========== NAJPRV VYKRESLI VÝPLŇ ROVINY (ak je zapnutá) ==========
+        if self.vector_manager.animation_controller.current_operation and self.plane_grid_mode > 0:
+            plane = self.vector_manager.animation_controller.current_plane
+            normal = self.vector_manager.animation_controller.operation_plane_normal
+
+            if plane and normal:
+                # Vykresli výplň ako prvú (bude vzadu)
+                if self.plane_grid_mode in (4, 5, 6, 7):
+                    fill_color = (0.6, 0.6, 0) if self.background_dark else (0.8, 0.8, 0.4)
+
+                    if self.plane_grid_mode in (4, 6):  # Priehľadná
+                        self.grid_renderer.draw_filled_plane(
+                            normal=normal,
+                            center=[0, 0, 0],
+                            size=length_xyz,
+                            color=fill_color,
+                            alpha=0.25,
+                            transparent=True
+                        )
+                    else:  # 5, 7 - Nepriehľadná
+                        self.grid_renderer.draw_filled_plane(
+                            normal=normal,
+                            center=[0, 0, 0],
+                            size=length_xyz,
+                            color=fill_color,
+                            alpha=1.0,
+                            transparent=False
+                        )
+
+        # Draw grid/planes (XYZ)
         if self.grid_mode == 1:
             self.grid_renderer.draw_planes_3d(length_xyz)
         elif self.grid_mode == 2:
@@ -4684,25 +4791,13 @@ class Application:
         elif self.grid_mode == 3:
             self.grid_renderer.draw_grid_3d(length_xyz)
 
-        # Draw axes
-        if self.show_axes:
-            cam_pos = self.camera.get_position()
-            self.axes_renderer.draw_axes_3d(length_xyz, cam_pos, self.vector_renderer)
-
-        # ========== GRID V ROVINE OPERÁCIE ==========
+        # ========== POTOM VYKRESLI GRID ROVINY ==========
         if self.vector_manager.animation_controller.current_operation and self.plane_grid_mode > 0:
             plane = self.vector_manager.animation_controller.current_plane
             normal = self.vector_manager.animation_controller.operation_plane_normal
 
             if plane and normal:
-                # Módy:
-                # 1 = len grid (žltý)
-                # 2 = grid jemnejší (tyrkysový)
-                # 3 = grid hrubší (fialový)
-                # 4 = vyplnená rovina + grid
-                # 5 = len vyplnená rovina
-
-                if self.plane_grid_mode in (1, 2, 3, 4):
+                if self.plane_grid_mode in (1, 2, 3, 4, 5):
                     if self.plane_grid_mode == 1:
                         grid_color = (0.6, 0.6, 0) if self.background_dark else (0.4, 0.4, 0)
                         step = 1.0
@@ -4712,8 +4807,8 @@ class Application:
                     elif self.plane_grid_mode == 3:
                         grid_color = (0.6, 0, 0.6) if self.background_dark else (0.4, 0, 0.4)
                         step = 2.0
-                    elif self.plane_grid_mode == 4:
-                        grid_color = (0.8, 0.8, 0.8) if self.background_dark else (0.3, 0.3, 0.3)
+                    elif self.plane_grid_mode in (4, 5):
+                        grid_color = (0.2, 0.2, 0.2) if self.background_dark else (0.5, 0.5, 0.5)
                         step = 1.0
 
                     self.grid_renderer.draw_grid_in_plane(
@@ -4724,19 +4819,12 @@ class Application:
                         color=grid_color
                     )
 
-                if self.plane_grid_mode in (4, 5):
-                    fill_color = (0.6, 0.6, 0) if self.background_dark else (0.8, 0.8, 0.4)
-                    alpha = 0.25 if self.plane_grid_mode == 4 else 0.4
-                    self.grid_renderer.draw_filled_plane(
-                        normal=normal,
-                        center=[0, 0, 0],
-                        size=length_xyz,
-                        color=fill_color,
-                        alpha=alpha
-                    )
-        # ========== KONIEC GRID V ROVINE ==========
+        # Draw axes
+        if self.show_axes:
+            cam_pos = self.camera.get_position()
+            self.axes_renderer.draw_axes_3d(length_xyz, cam_pos, self.vector_renderer)
 
-        # Draw vectors
+        # Draw vectors (na konci - vždy navrchu)
         if self.grid_mode in (1, 2):
             color = (0, 0, 0)
         else:
