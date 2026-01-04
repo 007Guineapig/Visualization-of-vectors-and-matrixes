@@ -1649,7 +1649,7 @@ class GridRenderer:
         glPushAttrib(GL_DEPTH_BUFFER_BIT)
         glDepthFunc(GL_LEQUAL)
         glEnable(GL_POLYGON_OFFSET_LINE)
-        glPolygonOffset(1.0, 1.0)  # Posunie grid dozadu
+        glPolygonOffset(1.0, 1.0)
 
         glLineWidth(2.0)
         glBegin(GL_LINES)
@@ -1662,21 +1662,21 @@ class GridRenderer:
             fi = float(i)
 
             # XZ plane (červená) - na Y=0
-            glColor3f(0.5, 0.0, 0.0)
+            glColor3f(0.9, 0.2, 0.2)
             glVertex3f(-size, offset, fi)
             glVertex3f(size, offset, fi)
             glVertex3f(fi, offset, -size)
             glVertex3f(fi, offset, size)
 
             # XY plane (zelená) - na Z=0
-            glColor3f(0.0, 0.5, 0.0)
+            glColor3f(0.2, 0.9, 0.2)
             glVertex3f(-size, fi, offset)
             glVertex3f(size, fi, offset)
             glVertex3f(fi, -size, offset)
             glVertex3f(fi, size, offset)
 
             # YZ plane (modrá) - na X=0
-            glColor3f(0.0, 0.0, 0.5)
+            glColor3f(0.2, 0.2, 0.9)
             glVertex3f(offset, -size, fi)
             glVertex3f(offset, size, fi)
             glVertex3f(offset, fi, -size)
@@ -1689,10 +1689,9 @@ class GridRenderer:
 
     @staticmethod
     def draw_planes_3d(size=2.0, step=1.0, colored=False):
-        """Nakreslí 3D plochy - OPTIMALIZOVANÉ"""
-        # Posuň plochy dozadu aby vektory boli vždy viditeľné
+        """Nakreslí 3D plochy - BEZ Z-FIGHTING"""
         glEnable(GL_POLYGON_OFFSET_FILL)
-        glPolygonOffset(2.0, 2.0)  # Väčší offset pre plochy
+        glPolygonOffset(2.0, 2.0)
 
         # Farby pre plochy
         if colored:
@@ -1703,10 +1702,7 @@ class GridRenderer:
             yz_color = (0, 0, 1.0)
 
         # XZ plane (Y=0)
-        if colored:
-            glColor3f(*plane_color)
-        else:
-            glColor3f(*xz_color)
+        glColor3f(*(plane_color if colored else xz_color))
         glBegin(GL_QUADS)
         glVertex3f(-size, 0, -size)
         glVertex3f(size, 0, -size)
@@ -1715,10 +1711,7 @@ class GridRenderer:
         glEnd()
 
         # XY plane (Z=0)
-        if colored:
-            glColor3f(*plane_color)
-        else:
-            glColor3f(*xy_color)
+        glColor3f(*(plane_color if colored else xy_color))
         glBegin(GL_QUADS)
         glVertex3f(-size, -size, 0)
         glVertex3f(size, -size, 0)
@@ -1727,10 +1720,7 @@ class GridRenderer:
         glEnd()
 
         # YZ plane (X=0)
-        if colored:
-            glColor3f(*plane_color)
-        else:
-            glColor3f(*yz_color)
+        glColor3f(*(plane_color if colored else yz_color))
         glBegin(GL_QUADS)
         glVertex3f(0, -size, -size)
         glVertex3f(0, size, -size)
@@ -1740,48 +1730,44 @@ class GridRenderer:
 
         glDisable(GL_POLYGON_OFFSET_FILL)
 
-        # Grid čiary s agresívnejším offsetom
-        glPushAttrib(GL_DEPTH_BUFFER_BIT)
-        glDepthFunc(GL_LEQUAL)
-        glEnable(GL_POLYGON_OFFSET_LINE)
-        glPolygonOffset(1.5, 1.5)
-
+        # Grid čiary - KAŽDÁ ROVINA MÁ INÝ OFFSET
         glColor3f(0, 0, 0)
         glLineWidth(1.5)
-        glBegin(GL_LINES)
 
-        offset = 0.01
         step_int = max(1, int(step))
         size_int = int(size)
 
-        # XZ plane grid (na Y=0)
+        # XZ plane grid (Y = 0.01)
+        glBegin(GL_LINES)
         for x in range(-size_int, size_int + 1, step_int):
-            glVertex3f(x, offset, -size)
-            glVertex3f(x, offset, size)
+            glVertex3f(x, 0.01, -size)
+            glVertex3f(x, 0.01, size)
         for z in range(-size_int, size_int + 1, step_int):
-            glVertex3f(-size, offset, z)
-            glVertex3f(size, offset, z)
-
-        # XY plane grid (na Z=0)
-        for x in range(-size_int, size_int + 1, step_int):
-            glVertex3f(x, -size, offset)
-            glVertex3f(x, size, offset)
-        for y in range(-size_int, size_int + 1, step_int):
-            glVertex3f(-size, y, offset)
-            glVertex3f(size, y, offset)
-
-        # YZ plane grid (na X=0)
-        for y in range(-size_int, size_int + 1, step_int):
-            glVertex3f(offset, y, -size)
-            glVertex3f(offset, y, size)
-        for z in range(-size_int, size_int + 1, step_int):
-            glVertex3f(offset, -size, z)
-            glVertex3f(offset, size, z)
-
+            glVertex3f(-size, 0.01, z)
+            glVertex3f(size, 0.01, z)
         glEnd()
 
-        glDisable(GL_POLYGON_OFFSET_LINE)
-        glPopAttrib()
+        # XY plane grid (Z = 0.02)
+        glBegin(GL_LINES)
+        for x in range(-size_int, size_int + 1, step_int):
+            glVertex3f(x, -size, 0.02)
+            glVertex3f(x, size, 0.02)
+        for y in range(-size_int, size_int + 1, step_int):
+            glVertex3f(-size, y, 0.02)
+            glVertex3f(size, y, 0.02)
+        glEnd()
+
+        # YZ plane grid (X = 0.03)
+        glBegin(GL_LINES)
+        for y in range(-size_int, size_int + 1, step_int):
+            glVertex3f(0.03, y, -size)
+            glVertex3f(0.03, y, size)
+        for z in range(-size_int, size_int + 1, step_int):
+            glVertex3f(0.03, -size, z)
+            glVertex3f(0.03, size, z)
+        glEnd()
+
+
 
     @staticmethod
     def draw_grid_in_plane(normal, center=(0, 0, 0), size=10.0, step=1.0, color=(0.4, 0.4, 0.4)):
@@ -4065,7 +4051,7 @@ class Application:
                                         plane = self.vector_manager.animation_controller.current_plane
                                         if plane:
                                             max_val = self.get_max_from_vectors()
-                                            distance = max(15.0, max_val * 3.5)
+                                            distance = max(25.0, max_val * 3.0)
 
                                             if plane == "3D":
                                                 optimal_view = self.vector_manager.animation_controller.compute_optimal_view_for_3d()
@@ -4370,7 +4356,7 @@ class Application:
                     plane = self.vector_manager.animation_controller.current_plane
                     if plane:
                         max_val = self.get_max_from_vectors()
-                        distance = max(15.0, max_val * 3.5)
+                        distance = max(25.0, max_val * 3.0)
 
                         if plane == "3D":
                             optimal_view = self.vector_manager.animation_controller.compute_optimal_view_for_current_step()
@@ -4402,7 +4388,7 @@ class Application:
                         plane = self.vector_manager.animation_controller.current_plane
                         if plane:
                             max_val = self.get_max_from_vectors()
-                            distance = max(15.0, max_val * 3.5)
+                            distance = max(25.0, max_val *3.0)
 
                             if plane == "3D":
                                 optimal_view = self.vector_manager.animation_controller.compute_optimal_view_for_current_step()
@@ -4427,7 +4413,7 @@ class Application:
                 plane = self.vector_manager.animation_controller.current_plane
                 if plane and not self.view_2d_mode:
                     max_val = self.get_max_from_vectors()
-                    distance = max(15.0, max_val * 3.5)
+                    distance = max(25.0, max_val * 3.0)
 
                     if plane == "3D":
                         optimal_view = self.vector_manager.animation_controller.compute_optimal_view_for_current_step()
