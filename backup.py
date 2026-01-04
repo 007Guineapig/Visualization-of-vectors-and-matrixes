@@ -1034,12 +1034,11 @@ class VectorRenderer:
 
 
 class MathRenderer:
-    """Renderer pre matematické výrazy v ľavom hornom rohu"""
+    """Renderer pre matematické výrazy - S ANIMÁCIOU"""
 
     @staticmethod
-    def draw_vector_math(x, y, vec, color=(1, 1, 1), font_size=24, highlight=False):
+    def draw_vector_math(x, y, vec, color=(1, 1, 1), font_size=24, highlight=False, alpha=1.0):
         """Nakreslí vektor v matematickom zápise"""
-        # Hlavná zátvorka
         glMatrixMode(GL_PROJECTION)
         glPushMatrix()
         glLoadIdentity()
@@ -1051,25 +1050,31 @@ class MathRenderer:
         glDisable(GL_DEPTH_TEST)
 
         # Výška vektora
-        vec_height = len(vec) * (font_size + 5)
+        line_height = font_size + 5
+        vec_height = len(vec) * line_height
+
+        # Farba s alpha
+        if alpha < 1.0:
+            draw_color = (color[0], color[1], color[2], alpha)
+        else:
+            draw_color = color
 
         # Zátvorky
-        if highlight:
-            EnhancedUIRenderer.draw_parenthesis(x - 5, y, vec_height, left=True,
-                                                color=color, thickness=3)
-            EnhancedUIRenderer.draw_parenthesis(x + 40, y, vec_height, left=False,
-                                                color=color, thickness=3)
-        else:
-            EnhancedUIRenderer.draw_parenthesis(x - 5, y, vec_height, left=True,
-                                                color=(0.7, 0.7, 0.7), thickness=2)
-            EnhancedUIRenderer.draw_parenthesis(x + 40, y, vec_height, left=False,
-                                                color=(0.7, 0.7, 0.7), thickness=2)
+        bracket_color = color if highlight else (0.7, 0.7, 0.7)
+        thickness = 3 if highlight else 2
+        EnhancedUIRenderer.draw_parenthesis(x - 5, y, vec_height, left=True,
+                                            color=bracket_color, thickness=thickness)
+        EnhancedUIRenderer.draw_parenthesis(x + 45, y, vec_height, left=False,
+                                            color=bracket_color, thickness=thickness)
 
         # Zložky vektora
+        text_color = color if highlight else (0.8, 0.8, 0.8)
         for i, val in enumerate(vec):
-            text_color = color if highlight else (0.8, 0.8, 0.8)
-            text = f"{val:.1f}" if isinstance(val, float) else str(val)
-            UIRenderer.draw_text_2d(text, (x + 5, y + i * (font_size + 5)),
+            if isinstance(val, float):
+                text = f"{val:.1f}"
+            else:
+                text = str(val)
+            UIRenderer.draw_text_2d(text, (x + 5, y + i * line_height),
                                     color=text_color, font_size=font_size)
 
         glEnable(GL_DEPTH_TEST)
@@ -1078,7 +1083,116 @@ class MathRenderer:
         glPopMatrix()
         glMatrixMode(GL_MODELVIEW)
 
-        return x + 50  # Vráť pozíciu za vektorom
+        return x + 55
+
+    @staticmethod
+    def draw_animated_vector_math(x, y, vec_from, vec_to, progress, color=(1, 1, 1),
+                                  font_size=24, highlight=False):
+        """Nakreslí animovaný vektor - interpoluje hodnoty medzi vec_from a vec_to"""
+        glMatrixMode(GL_PROJECTION)
+        glPushMatrix()
+        glLoadIdentity()
+        width, height = pygame.display.get_window_size()
+        glOrtho(0, width, height, 0, -1, 1)
+        glMatrixMode(GL_MODELVIEW)
+        glPushMatrix()
+        glLoadIdentity()
+        glDisable(GL_DEPTH_TEST)
+
+        line_height = font_size + 5
+        vec_height = len(vec_to) * line_height
+
+        bracket_color = color if highlight else (0.7, 0.7, 0.7)
+        thickness = 3 if highlight else 2
+        EnhancedUIRenderer.draw_parenthesis(x - 5, y, vec_height, left=True,
+                                            color=bracket_color, thickness=thickness)
+        EnhancedUIRenderer.draw_parenthesis(x + 45, y, vec_height, left=False,
+                                            color=bracket_color, thickness=thickness)
+
+        text_color = color if highlight else (0.8, 0.8, 0.8)
+        for i in range(len(vec_to)):
+            # Interpoluj hodnotu
+            if vec_from is not None and i < len(vec_from):
+                val = vec_from[i] + (vec_to[i] - vec_from[i]) * progress
+            else:
+                val = vec_to[i] * progress
+
+            text = f"{val:.1f}"
+            UIRenderer.draw_text_2d(text, (x + 5, y + i * line_height),
+                                    color=text_color, font_size=font_size)
+
+        glEnable(GL_DEPTH_TEST)
+        glPopMatrix()
+        glMatrixMode(GL_PROJECTION)
+        glPopMatrix()
+        glMatrixMode(GL_MODELVIEW)
+
+        return x + 55
+
+    @staticmethod
+    def draw_component_operation_animated(x, y, vec1, vec2, op, progress,
+                                          color=(1, 1, 1), font_size=20):
+        """Nakreslí animovanú operáciu medzi komponentmi (3 + 2 → 5)"""
+        glMatrixMode(GL_PROJECTION)
+        glPushMatrix()
+        glLoadIdentity()
+        width, height = pygame.display.get_window_size()
+        glOrtho(0, width, height, 0, -1, 1)
+        glMatrixMode(GL_MODELVIEW)
+        glPushMatrix()
+        glLoadIdentity()
+        glDisable(GL_DEPTH_TEST)
+
+        line_height = font_size + 5
+        vec_height = len(vec1) * line_height
+
+        EnhancedUIRenderer.draw_parenthesis(x - 5, y, vec_height, left=True,
+                                            color=color, thickness=3)
+        EnhancedUIRenderer.draw_parenthesis(x + 100, y, vec_height, left=False,
+                                            color=color, thickness=3)
+
+        for i in range(len(vec1)):
+            v1 = vec1[i]
+            v2 = vec2[i]
+
+            if op == "+":
+                result = v1 + v2
+            elif op == "-":
+                result = v1 - v2
+            else:
+                result = v1 + v2
+
+            # Animovaný text: na začiatku "3 + 2", na konci "5"
+            if progress < 0.5:
+                # Zobraz operáciu
+                v1_str = f"{v1:.1f}" if isinstance(v1, float) else str(v1)
+                v2_str = f"{v2:.1f}" if isinstance(v2, float) else str(v2)
+                text = f"{v1_str} {op} {v2_str}"
+                # Fade out
+                alpha = 1.0 - (progress * 2)
+            else:
+                # Zobraz výsledok
+                text = f"{result:.1f}" if isinstance(result, float) else str(result)
+                # Fade in
+                alpha = (progress - 0.5) * 2
+
+            # Farba s alpha simuláciou (svetlejšia = viac priesvitná)
+            adj_color = (
+                color[0] * alpha + (1 - alpha) * 0.3,
+                color[1] * alpha + (1 - alpha) * 0.3,
+                color[2] * alpha + (1 - alpha) * 0.3
+            )
+
+            UIRenderer.draw_text_2d(text, (x + 5, y + i * line_height),
+                                    color=adj_color, font_size=font_size)
+
+        glEnable(GL_DEPTH_TEST)
+        glPopMatrix()
+        glMatrixMode(GL_PROJECTION)
+        glPopMatrix()
+        glMatrixMode(GL_MODELVIEW)
+
+        return x + 110
 
     @staticmethod
     def draw_vector_component_operation(x, y, vec1, vec2, op="+", color=(1, 1, 1), font_size=20):
@@ -1093,20 +1207,19 @@ class MathRenderer:
         glLoadIdentity()
         glDisable(GL_DEPTH_TEST)
 
-        vec_height = len(vec1) * (font_size + 5)
+        line_height = font_size + 5
+        vec_height = len(vec1) * line_height
 
-        # Zátvorky
         EnhancedUIRenderer.draw_parenthesis(x - 5, y, vec_height, left=True,
                                             color=color, thickness=3)
         EnhancedUIRenderer.draw_parenthesis(x + 80, y, vec_height, left=False,
                                             color=color, thickness=3)
 
-        # Operácie medzi zložkami
         for i in range(len(vec1)):
             v1 = f"{vec1[i]:.1f}" if isinstance(vec1[i], float) else str(vec1[i])
             v2 = f"{vec2[i]:.1f}" if isinstance(vec2[i], float) else str(vec2[i])
             text = f"{v1} {op} {v2}"
-            UIRenderer.draw_text_2d(text, (x + 5, y + i * (font_size + 5)),
+            UIRenderer.draw_text_2d(text, (x + 5, y + i * line_height),
                                     color=color, font_size=font_size)
 
         glEnable(GL_DEPTH_TEST)
@@ -1130,12 +1243,24 @@ class MathRenderer:
         return x + 30
 
     @staticmethod
+    def draw_equals_animated(x, y, progress, color=(1, 1, 1), font_size=32):
+        """Nakreslí animované rovná sa (fade in)"""
+        # Fade in efekt
+        alpha = progress
+        adj_color = (
+            color[0] * alpha + (1 - alpha) * 0.2,
+            color[1] * alpha + (1 - alpha) * 0.2,
+            color[2] * alpha + (1 - alpha) * 0.2
+        )
+        UIRenderer.draw_text_2d("=", (x, y + 10), color=adj_color, font_size=font_size)
+        return x + 30
+
+    @staticmethod
     def draw_scalar(x, y, scalar, color=(1, 1, 1), font_size=28):
         """Nakreslí skalár"""
         text = f"{scalar:.1f}" if isinstance(scalar, float) else str(scalar)
         UIRenderer.draw_text_2d(text, (x, y + 12), color=color, font_size=font_size)
         return x + 30
-
 
 class Config:
     """Globálna konfigurácia aplikácie"""
@@ -3845,6 +3970,7 @@ class Application:
                                           color=color1, font_size=14)
 
             # --- Draw PENDING INPUT PANEL ---
+            # --- Draw PENDING INPUT PANEL ---
             if pending_input_panel:
                 # Špeciálne vykreslenie pre lineárnu kombináciu
                 if pending_input_panel.get("is_linear_combination"):
@@ -3879,22 +4005,33 @@ class Application:
                                 self.ui_renderer.draw_text_2d(label, (x + 10, y),
                                                               color=color_symbol, font_size=18)
 
+                        # OPRAVENÉ symboly pre lineárnu kombináciu
                         if panel_idx == 0:
-                            symbol_x = panel["x"] + 50
-                            symbol_y = panel["y"] + 5
+                            # × za prvou konštantou
+                            font_size_sym = 30
+                            symbol_x = panel["x"] + 50 + 5
+                            symbol_y = panel["y"] + Config.MATRIX_CELL_H // 2 - font_size_sym // 3
                             self.ui_renderer.draw_text_2d("×", (symbol_x, symbol_y),
-                                                          color=color_symbol, font_size=30)
+                                                          color=color_symbol, font_size=font_size_sym)
                         elif panel_idx == 1:
-                            symbol_x = panel["x"] + Config.MATRIX_CELL_W + 10
-                            symbol_y = panel["y"] + (panel["rows"] * Config.MATRIX_CELL_H) // 2 - 10
+                            # + medzi vektormi/maticami
+                            font_size_sym = 35
+                            symbol_x = panel["x"] + panel["cols"] * (Config.MATRIX_CELL_W + Config.MATRIX_GAP) + 10
+                            panel_total_height = panel["rows"] * (
+                                        Config.MATRIX_CELL_H + Config.MATRIX_GAP) - Config.MATRIX_GAP
+                            symbol_y = panel["y"] + (panel_total_height - font_size_sym) // 2
                             self.ui_renderer.draw_text_2d("+", (symbol_x, symbol_y),
-                                                          color=color_symbol, font_size=35)
+                                                          color=color_symbol, font_size=font_size_sym)
                         elif panel_idx == 2:
-                            symbol_x = panel["x"] + 50
-                            symbol_y = panel["y"] + 5
+                            # × za druhou konštantou
+                            font_size_sym = 30
+                            symbol_x = panel["x"] + 50 + 5
+                            symbol_y = panel["y"] + Config.MATRIX_CELL_H // 2 - font_size_sym // 3
                             self.ui_renderer.draw_text_2d("×", (symbol_x, symbol_y),
-                                                          color=color_symbol, font_size=30)
+                                                          color=color_symbol, font_size=font_size_sym)
                 else:
+                    color_symbol = (1, 1, 1) if self.background_dark else (0, 0, 0)
+
                     for panel_idx, panel in enumerate(pending_input_panel["panels"]):
                         is_active_panel = (panel_idx == pending_input_panel["active_panel"])
 
@@ -3913,21 +4050,28 @@ class Application:
                                     self.ui_renderer.draw_input_box_3d(x, y, Config.MATRIX_CELL_W, Config.MATRIX_CELL_H,
                                                                        panel["values"][r][c], active)
 
+                        # OPRAVENÉ VYKRESLENIE SYMBOLOV
                         if pending_input_panel["symbol"]:
                             if pending_input_panel.get("has_constant") and panel_idx == 0:
-                                symbol_x = panel["x"] + 60
-                                symbol_y = panel["y"]
-                                color_symbol = (1, 1, 1) if self.background_dark else (0, 0, 0)
+                                # Symbol za konštantou (×)
+                                font_size_sym = 40
+                                symbol_x = panel["x"] + 50 + 5
+                                # Vertikálne centrovanie vzhľadom na konštantu
+                                symbol_y = panel["y"] + Config.MATRIX_CELL_H // 2 - font_size_sym // 3
                                 self.ui_renderer.draw_text_2d(pending_input_panel["symbol"], (symbol_x, symbol_y),
-                                                              color=color_symbol, font_size=40)
+                                                              color=color_symbol, font_size=font_size_sym)
+
                             elif not pending_input_panel.get("has_constant") and panel_idx < len(
                                     pending_input_panel["panels"]) - 1:
+                                # Symbol medzi vektormi/maticami (+, -)
+                                font_size_sym = 40
                                 symbol_x = panel["x"] + panel["cols"] * (Config.MATRIX_CELL_W + Config.MATRIX_GAP) + 10
-                                symbol_y = panel["y"] + (
-                                            panel["rows"] * (Config.MATRIX_CELL_H + Config.MATRIX_GAP)) // 2
-                                color_symbol = (1, 1, 1) if self.background_dark else (0, 0, 0)
+                                # OPRAVA: Správne vertikálne centrovanie
+                                panel_total_height = panel["rows"] * (
+                                            Config.MATRIX_CELL_H + Config.MATRIX_GAP) - Config.MATRIX_GAP
+                                symbol_y = panel["y"] + (panel_total_height - font_size_sym) // 2
                                 self.ui_renderer.draw_text_2d(pending_input_panel["symbol"], (symbol_x, symbol_y),
-                                                              color=color_symbol, font_size=40)
+                                                              color=color_symbol, font_size=font_size_sym)
 
             pygame.display.flip()
 
@@ -5215,9 +5359,8 @@ class Application:
             return False
         return isinstance(data[0], (list, tuple))
 
-    # V metóde render_math_display - pridaj krok 3 pre 'add'
     def render_math_display(self, math_info):
-        """Vykreslí matematické zobrazenie operácie v ľavom hornom rohu"""
+        """Vykreslí matematické zobrazenie operácie - S ANIMÁCIOU"""
         math_renderer = MathRenderer()
 
         start_x = 20
@@ -5230,191 +5373,231 @@ class Application:
         result = math_info['result']
         constant = math_info['constant']
 
-        is_matrix_op = self._is_matrix(operands[0]) if operands else False
+        # Získaj animation progress
+        ctrl = self.vector_manager.animation_controller
+        anim_progress = ctrl.animation_progress if ctrl.animating else 1.0
 
+        is_matrix_op = self._is_matrix(operands[0]) if operands else False
         text_color = (1, 1, 1) if self.background_dark else (0, 0, 0)
+
+        # Pomocná funkcia pre flatten matice na vektory pre zobrazenie
+        def flatten_for_display(data):
+            if isinstance(data[0], (list, tuple)):
+                # Matica - zobraz ako stĺpce
+                return [row[0] if len(row) > 0 else 0 for row in data]
+            return data
 
         # SČÍTANIE
         if op_type == 'add':
+            op1_display = flatten_for_display(operands[0])
+            op2_display = flatten_for_display(operands[1])
+            result_display = flatten_for_display(result)
+
             if step == 0:
-                # v1 + v2
-                current_x = math_renderer.draw_vector_math(current_x, start_y, operands[0],
+                # v1 + v2 (statické)
+                current_x = math_renderer.draw_vector_math(current_x, start_y, op1_display,
                                                            color=(0.8, 0.8, 0.8), font_size=22)
                 current_x = math_renderer.draw_operator(current_x, start_y, "+",
                                                         color=text_color, font_size=28)
-                current_x = math_renderer.draw_vector_math(current_x, start_y, operands[1],
+                current_x = math_renderer.draw_vector_math(current_x, start_y, op2_display,
                                                            color=(0.8, 0.8, 0.8), font_size=22)
 
             elif step == 1:
-                # v1 (highlight) + v2
-                current_x = math_renderer.draw_vector_math(current_x, start_y, operands[0],
+                # v1 (highlight) + v2 (animovaný posun)
+                current_x = math_renderer.draw_vector_math(current_x, start_y, op1_display,
                                                            color=(1, 0.5, 0), font_size=22, highlight=True)
                 current_x = math_renderer.draw_operator(current_x, start_y, "+",
                                                         color=text_color, font_size=28)
-                current_x = math_renderer.draw_vector_math(current_x, start_y, operands[1],
+                current_x = math_renderer.draw_vector_math(current_x, start_y, op2_display,
                                                            color=(0, 0.5, 1), font_size=22, highlight=True)
 
-                # Druhý riadok: rozklad operácie
+                # Druhý riadok: animovaný rozklad operácie
                 current_x = start_x
-                start_y += len(operands[0]) * 27 + 20
+                start_y += len(op1_display) * 27 + 20
+
+                # Animuj zobrazenie operácie (fade in)
+                if anim_progress < 1.0:
+                    # Postupne zobrazuj
+                    alpha = anim_progress
+                    adj_color = (0.8 * alpha, 0.8 * alpha, 0.8 * alpha)
+                else:
+                    adj_color = (0.8, 0.8, 0.8)
+
                 current_x = math_renderer.draw_vector_component_operation(
-                    current_x, start_y, operands[0], operands[1], "+",
-                    color=(0.8, 0.8, 0.8), font_size=20)
+                    current_x, start_y, op1_display, op2_display, "+",
+                    color=adj_color, font_size=20)
 
             elif step == 2:
-                # v1 + v2 = result
-                current_x = math_renderer.draw_vector_math(current_x, start_y, operands[0],
+                # v1 + v2 = result (animovaný výsledok)
+                current_x = math_renderer.draw_vector_math(current_x, start_y, op1_display,
                                                            color=(1, 0.5, 0), font_size=22, highlight=True)
                 current_x = math_renderer.draw_operator(current_x, start_y, "+",
                                                         color=text_color, font_size=28)
-                current_x = math_renderer.draw_vector_math(current_x, start_y, operands[1],
+                current_x = math_renderer.draw_vector_math(current_x, start_y, op2_display,
                                                            color=(0, 0.5, 1), font_size=22, highlight=True)
-                current_x = math_renderer.draw_equals(current_x, start_y,
-                                                      color=text_color, font_size=28)
-                current_x = math_renderer.draw_vector_math(current_x, start_y, result,
-                                                           color=self.RESULT_COLOR, font_size=22, highlight=True)
 
+                # Animované "="
+                current_x = math_renderer.draw_equals_animated(current_x, start_y,
+                                                               anim_progress, color=text_color, font_size=28)
 
-            # V metóde render_math_display - uprav krok 3 pre 'add'
+                # Animovaný výsledok - čísla rastú od 0 do výsledku
+                if anim_progress < 1.0:
+                    # Interpoluj výsledok
+                    animated_result = [r * anim_progress for r in result_display]
+                    current_x = math_renderer.draw_vector_math(current_x, start_y, animated_result,
+                                                               color=self.RESULT_COLOR, font_size=22, highlight=True)
+                else:
+                    current_x = math_renderer.draw_vector_math(current_x, start_y, result_display,
+                                                               color=self.RESULT_COLOR, font_size=22, highlight=True)
+
+                # Druhý riadok: animovaná transformácia operácie na výsledok
+                current_x = start_x
+                start_y += len(op1_display) * 27 + 20
+
+                # Animuj prechod z "3+2" na "5"
+                math_renderer.draw_component_operation_animated(
+                    current_x, start_y, op1_display, op2_display, "+",
+                    anim_progress, color=(0.8, 0.8, 0.8), font_size=20)
 
             elif step == 3:
-
-                # KOMUTATÍVNOSŤ - obe rovnice vedľa seba
-
-                # Prvý riadok: v1 + v2 = result (pôvodné)
-
+                # KOMUTATÍVNOSŤ
                 self.ui_renderer.draw_text_2d("Pôvodné:", (start_x, start_y - 25),
-
                                               color=text_color, font_size=16)
-
-                current_x = math_renderer.draw_vector_math(current_x, start_y, operands[0],
-
+                current_x = math_renderer.draw_vector_math(current_x, start_y, op1_display,
                                                            color=(1, 0.5, 0), font_size=20, highlight=True)
-
                 current_x = math_renderer.draw_operator(current_x, start_y, "+",
-
                                                         color=text_color, font_size=24)
-
-                current_x = math_renderer.draw_vector_math(current_x, start_y, operands[1],
-
+                current_x = math_renderer.draw_vector_math(current_x, start_y, op2_display,
                                                            color=(0, 0.5, 1), font_size=20, highlight=True)
-
                 current_x = math_renderer.draw_equals(current_x, start_y,
-
                                                       color=text_color, font_size=24)
-
-                current_x = math_renderer.draw_vector_math(current_x, start_y, result,
-
+                current_x = math_renderer.draw_vector_math(current_x, start_y, result_display,
                                                            color=self.RESULT_COLOR, font_size=20, highlight=True)
 
-                # Druhý riadok: v2 + v1 = result (nové - opačné poradie)
-
+                # Druhý riadok: v2 + v1 (animované fade in)
                 current_x = start_x
+                start_y += len(op1_display) * 25 + 25
 
-                start_y += len(operands[0]) * 25 + 25
+                # Fade in pre "Nové" text
+                if anim_progress < 1.0:
+                    alpha = anim_progress
+                    new_color = (text_color[0] * alpha, text_color[1] * alpha, text_color[2] * alpha)
+                else:
+                    new_color = text_color
 
                 self.ui_renderer.draw_text_2d("Nové (komutatívnosť):", (start_x, start_y - 25),
+                                              color=new_color, font_size=16)
 
-                                              color=text_color, font_size=16)
+                # Animované zobrazenie opačného poradia
+                v2_color = (0.3 * anim_progress + 0.1, 0.8 * anim_progress + 0.1, 1.0 * anim_progress)
+                v1_color = (1.0 * anim_progress, 0.8 * anim_progress + 0.1, 0.4 * anim_progress + 0.1)
 
-                current_x = math_renderer.draw_vector_math(current_x, start_y, operands[1],
-
-                                                           color=(0.3, 0.8, 1), font_size=20, highlight=True)
-
+                current_x = math_renderer.draw_vector_math(current_x, start_y, op2_display,
+                                                           color=v2_color, font_size=20, highlight=True)
                 current_x = math_renderer.draw_operator(current_x, start_y, "+",
+                                                        color=new_color, font_size=24)
+                current_x = math_renderer.draw_vector_math(current_x, start_y, op1_display,
+                                                           color=v1_color, font_size=20, highlight=True)
+                current_x = math_renderer.draw_equals_animated(current_x, start_y,
+                                                               anim_progress, color=text_color, font_size=24)
 
-                                                        color=text_color, font_size=24)
+                # Výsledok fade in
+                result_color = (self.RESULT_COLOR[0] * anim_progress + 0.1,
+                                self.RESULT_COLOR[1] * anim_progress + 0.1,
+                                self.RESULT_COLOR[2] * anim_progress + 0.1)
+                current_x = math_renderer.draw_vector_math(current_x, start_y, result_display,
+                                                           color=result_color, font_size=20, highlight=True)
 
-                current_x = math_renderer.draw_vector_math(current_x, start_y, operands[0],
-
-                                                           color=(1, 0.8, 0.4), font_size=20, highlight=True)
-
-                current_x = math_renderer.draw_equals(current_x, start_y,
-
-                                                      color=text_color, font_size=24)
-
-                current_x = math_renderer.draw_vector_math(current_x, start_y, result,
-
-                                                           color=self.RESULT_COLOR, font_size=20, highlight=True)
-
-                # Tretí riadok: vysvetlenie
-
-                current_x = start_x
-
-                start_y += len(operands[0]) * 25 + 20
-
-                self.ui_renderer.draw_text_2d("→ Oba spôsoby vedú k rovnakému výsledku",
-
-                                              (current_x, start_y), color=text_color, font_size=16)
-
-        # ... zvyšok metódy pre ostatné operácie ostáva rovnaký ...
+                # Tretí riadok
+                if anim_progress >= 0.8:
+                    current_x = start_x
+                    start_y += len(op1_display) * 25 + 20
+                    final_alpha = (anim_progress - 0.8) / 0.2
+                    final_color = (text_color[0] * final_alpha, text_color[1] * final_alpha,
+                                   text_color[2] * final_alpha)
+                    self.ui_renderer.draw_text_2d("→ Oba spôsoby vedú k rovnakému výsledku",
+                                                  (current_x, start_y), color=final_color, font_size=16)
 
         # ODČÍTANIE
         elif op_type == 'subtract':
+            op1_display = flatten_for_display(operands[0])
+            op2_display = flatten_for_display(operands[1])
+            neg_op2_display = [-x for x in op2_display]
+            result_display = flatten_for_display(result)
+
             if step == 0:
-                current_x = math_renderer.draw_vector_math(current_x, start_y, operands[0],
+                current_x = math_renderer.draw_vector_math(current_x, start_y, op1_display,
                                                            color=(0.8, 0.8, 0.8), font_size=22)
                 current_x = math_renderer.draw_operator(current_x, start_y, "-",
                                                         color=text_color, font_size=28)
-                current_x = math_renderer.draw_vector_math(current_x, start_y, operands[1],
+                current_x = math_renderer.draw_vector_math(current_x, start_y, op2_display,
                                                            color=(0.8, 0.8, 0.8), font_size=22)
 
             elif step == 1:
-                # v1 - v2 = v1 + (-v2)
-                if is_matrix_op:
-                    negated = [[-x for x in row] for row in operands[1]]
-                else:
-                    negated = [-x for x in operands[1]]
-                current_x = math_renderer.draw_vector_math(current_x, start_y, operands[0],
+                # Animácia negácie: v2 → -v2
+                current_x = math_renderer.draw_vector_math(current_x, start_y, op1_display,
                                                            color=(1, 0.5, 0), font_size=22, highlight=True)
                 current_x = math_renderer.draw_operator(current_x, start_y, "+",
                                                         color=text_color, font_size=28)
-                current_x = math_renderer.draw_vector_math(current_x, start_y, negated,
-                                                           color=(1, 0, 0.5), font_size=22, highlight=True)
+
+                # Animovaná negácia
+                if anim_progress < 1.0:
+                    animated_neg = [op2_display[i] + (neg_op2_display[i] - op2_display[i]) * anim_progress
+                                    for i in range(len(op2_display))]
+                    current_x = math_renderer.draw_vector_math(current_x, start_y, animated_neg,
+                                                               color=(1, 0, 0.5), font_size=22, highlight=True)
+                else:
+                    current_x = math_renderer.draw_vector_math(current_x, start_y, neg_op2_display,
+                                                               color=(1, 0, 0.5), font_size=22, highlight=True)
 
             elif step == 2:
-                if is_matrix_op:
-                    negated = [[-x for x in row] for row in operands[1]]
-                else:
-                    negated = [-x for x in operands[1]]
-                current_x = math_renderer.draw_vector_math(current_x, start_y, operands[0],
+                current_x = math_renderer.draw_vector_math(current_x, start_y, op1_display,
                                                            color=(1, 0.5, 0), font_size=22, highlight=True)
                 current_x = math_renderer.draw_operator(current_x, start_y, "+",
                                                         color=text_color, font_size=28)
-                current_x = math_renderer.draw_vector_math(current_x, start_y, negated,
+                current_x = math_renderer.draw_vector_math(current_x, start_y, neg_op2_display,
                                                            color=(1, 0, 0.5), font_size=22, highlight=True)
 
-                # Druhý riadok
                 current_x = start_x
-                start_y += len(operands[0]) * 27 + 20
+                start_y += len(op1_display) * 27 + 20
+
+                # Animovaný rozklad
+                alpha = anim_progress
+                adj_color = (0.8 * alpha, 0.8 * alpha, 0.8 * alpha)
                 current_x = math_renderer.draw_vector_component_operation(
-                    current_x, start_y, operands[0], negated, "+",
-                    color=(0.8, 0.8, 0.8), font_size=20)
+                    current_x, start_y, op1_display, neg_op2_display, "+",
+                    color=adj_color, font_size=20)
 
             elif step == 3:
-                if is_matrix_op:
-                    negated = [[-x for x in row] for row in operands[1]]
-                else:
-                    negated = [-x for x in operands[1]]
-                current_x = math_renderer.draw_vector_math(current_x, start_y, operands[0],
+                current_x = math_renderer.draw_vector_math(current_x, start_y, op1_display,
                                                            color=(1, 0.5, 0), font_size=22, highlight=True)
                 current_x = math_renderer.draw_operator(current_x, start_y, "+",
                                                         color=text_color, font_size=28)
-                current_x = math_renderer.draw_vector_math(current_x, start_y, negated,
+                current_x = math_renderer.draw_vector_math(current_x, start_y, neg_op2_display,
                                                            color=(1, 0, 0.5), font_size=22, highlight=True)
-                current_x = math_renderer.draw_equals(current_x, start_y,
-                                                      color=text_color, font_size=28)
-                current_x = math_renderer.draw_vector_math(current_x, start_y, result,
-                                                           color= self.RESULT_COLOR, font_size=22, highlight=True)
+                current_x = math_renderer.draw_equals_animated(current_x, start_y,
+                                                               anim_progress, color=text_color, font_size=28)
+
+                # Animovaný výsledok
+                if anim_progress < 1.0:
+                    animated_result = [r * anim_progress for r in result_display]
+                    current_x = math_renderer.draw_vector_math(current_x, start_y, animated_result,
+                                                               color=self.RESULT_COLOR, font_size=22, highlight=True)
+                else:
+                    current_x = math_renderer.draw_vector_math(current_x, start_y, result_display,
+                                                               color=self.RESULT_COLOR, font_size=22, highlight=True)
 
         # NÁSOBENIE KONŠTANTOU
         elif op_type == 'scalar_mult':
+            op1_display = flatten_for_display(operands[0])
+            result_display = flatten_for_display(result)
+
             if step == 0:
                 current_x = math_renderer.draw_scalar(current_x, start_y, constant,
                                                       color=text_color, font_size=26)
                 current_x = math_renderer.draw_operator(current_x - 10, start_y, "·",
                                                         color=text_color, font_size=28)
-                current_x = math_renderer.draw_vector_math(current_x, start_y, operands[0],
+                current_x = math_renderer.draw_vector_math(current_x, start_y, op1_display,
                                                            color=(1, 0.5, 0), font_size=22, highlight=True)
 
             elif step == 1:
@@ -5422,24 +5605,37 @@ class Application:
                                                       color=text_color, font_size=26)
                 current_x = math_renderer.draw_operator(current_x - 10, start_y, "·",
                                                         color=text_color, font_size=28)
-                current_x = math_renderer.draw_vector_math(current_x, start_y, operands[0],
+                current_x = math_renderer.draw_vector_math(current_x, start_y, op1_display,
                                                            color=(1, 0.5, 0), font_size=22, highlight=True)
-                current_x = math_renderer.draw_equals(current_x, start_y,
-                                                      color=text_color, font_size=28)
-                current_x = math_renderer.draw_vector_math(current_x, start_y, result,
-                                                           color= self.RESULT_COLOR, font_size=22, highlight=True)
+                current_x = math_renderer.draw_equals_animated(current_x, start_y,
+                                                               anim_progress, color=text_color, font_size=28)
+
+                # Animovaný výsledok - interpolácia od pôvodného k výsledku
+                if anim_progress < 1.0:
+                    animated_result = [op1_display[i] + (result_display[i] - op1_display[i]) * anim_progress
+                                       for i in range(len(result_display))]
+                    current_x = math_renderer.draw_vector_math(current_x, start_y, animated_result,
+                                                               color=self.RESULT_COLOR, font_size=22, highlight=True)
+                else:
+                    current_x = math_renderer.draw_vector_math(current_x, start_y, result_display,
+                                                               color=self.RESULT_COLOR, font_size=22, highlight=True)
 
         # LINEÁRNA KOMBINÁCIA
         elif op_type == 'linear_combination':
             c1, c2 = constant if constant else [1, 1]
+            op1_display = flatten_for_display(operands[0])
+            op2_display = flatten_for_display(operands[1])
+            result_display = flatten_for_display(result)
+
+            scaled_v1 = [c1 * x for x in op1_display]
+            scaled_v2 = [c2 * x for x in op2_display]
 
             if step == 0:
-                # c1·v1 + c2·v2
                 current_x = math_renderer.draw_scalar(current_x, start_y, c1,
                                                       color=text_color, font_size=24)
                 current_x = math_renderer.draw_operator(current_x - 10, start_y, "·",
                                                         color=text_color, font_size=26)
-                current_x = math_renderer.draw_vector_math(current_x, start_y, operands[0],
+                current_x = math_renderer.draw_vector_math(current_x, start_y, op1_display,
                                                            color=(0.8, 0.8, 0.8), font_size=20)
                 current_x = math_renderer.draw_operator(current_x, start_y, "+",
                                                         color=text_color, font_size=26)
@@ -5447,16 +5643,18 @@ class Application:
                                                       color=text_color, font_size=24)
                 current_x = math_renderer.draw_operator(current_x - 10, start_y, "·",
                                                         color=text_color, font_size=26)
-                current_x = math_renderer.draw_vector_math(current_x, start_y, operands[1],
+                current_x = math_renderer.draw_vector_math(current_x, start_y, op2_display,
                                                            color=(0.8, 0.8, 0.8), font_size=20)
 
             elif step == 1:
-                # Highlight c1·v1
-                if is_matrix_op:
-                    scaled_v1 = [[c1 * x for x in row] for row in operands[0]]
+                # Animácia škálovania v1
+                if anim_progress < 1.0:
+                    animated_scaled = [op1_display[i] + (scaled_v1[i] - op1_display[i]) * anim_progress
+                                       for i in range(len(op1_display))]
                 else:
-                    scaled_v1 = [c1 * x for x in operands[0]]
-                current_x = math_renderer.draw_vector_math(current_x, start_y, scaled_v1,
+                    animated_scaled = scaled_v1
+
+                current_x = math_renderer.draw_vector_math(current_x, start_y, animated_scaled,
                                                            color=(1, 0.5, 0), font_size=20, highlight=True)
                 current_x = math_renderer.draw_operator(current_x, start_y, "+",
                                                         color=text_color, font_size=26)
@@ -5464,33 +5662,26 @@ class Application:
                                                       color=text_color, font_size=24)
                 current_x = math_renderer.draw_operator(current_x - 10, start_y, "·",
                                                         color=text_color, font_size=26)
-                current_x = math_renderer.draw_vector_math(current_x, start_y, operands[1],
+                current_x = math_renderer.draw_vector_math(current_x, start_y, op2_display,
                                                            color=(0.8, 0.8, 0.8), font_size=20)
 
             elif step == 2:
-                # Oba vektory
-                if is_matrix_op:
-                    scaled_v1 = [[c1 * x for x in row] for row in operands[0]]
-                    scaled_v2 = [[c2 * x for x in row] for row in operands[1]]
-                else:
-                    scaled_v1 = [c1 * x for x in operands[0]]
-                    scaled_v2 = [c2 * x for x in operands[1]]
-
+                # Animácia škálovania v2
                 current_x = math_renderer.draw_vector_math(current_x, start_y, scaled_v1,
                                                            color=(1, 0.5, 0), font_size=20, highlight=True)
                 current_x = math_renderer.draw_operator(current_x, start_y, "+",
                                                         color=text_color, font_size=26)
-                current_x = math_renderer.draw_vector_math(current_x, start_y, scaled_v2,
+
+                if anim_progress < 1.0:
+                    animated_scaled = [op2_display[i] + (scaled_v2[i] - op2_display[i]) * anim_progress
+                                       for i in range(len(op2_display))]
+                else:
+                    animated_scaled = scaled_v2
+
+                current_x = math_renderer.draw_vector_math(current_x, start_y, animated_scaled,
                                                            color=(0, 0.5, 1), font_size=20, highlight=True)
 
             elif step == 3:
-                # c1.v1 (highlight) + c2.v2
-                if is_matrix_op:
-                    scaled_v1 = [[c1 * x for x in row] for row in operands[0]]
-                    scaled_v2 = [[c2 * x for x in row] for row in operands[1]]
-                else:
-                    scaled_v1 = [c1 * x for x in operands[0]]
-                    scaled_v2 = [c2 * x for x in operands[1]]
                 current_x = math_renderer.draw_vector_math(current_x, start_y, scaled_v1,
                                                            color=(1, 0.5, 0), font_size=20, highlight=True)
                 current_x = math_renderer.draw_operator(current_x, start_y, "+",
@@ -5498,32 +5689,32 @@ class Application:
                 current_x = math_renderer.draw_vector_math(current_x, start_y, scaled_v2,
                                                            color=(0, 0.5, 1), font_size=20, highlight=True)
 
-                # Druhý riadok: rozklad operácie
                 current_x = start_x
                 start_y += len(scaled_v1) * 27 + 20
+
+                alpha = anim_progress
+                adj_color = (0.8 * alpha, 0.8 * alpha, 0.8 * alpha)
                 current_x = math_renderer.draw_vector_component_operation(
                     current_x, start_y, scaled_v1, scaled_v2, "+",
-                    color=(0.8, 0.8, 0.8), font_size=20)
-
+                    color=adj_color, font_size=20)
 
             elif step == 4:
-                # Výsledok
-                if is_matrix_op:
-                    scaled_v1 = [[c1 * x for x in row] for row in operands[0]]
-                    scaled_v2 = [[c2 * x for x in row] for row in operands[1]]
-                else:
-                    scaled_v1 = [c1 * x for x in operands[0]]
-                    scaled_v2 = [c2 * x for x in operands[1]]
                 current_x = math_renderer.draw_vector_math(current_x, start_y, scaled_v1,
                                                            color=(1, 0.5, 0), font_size=20, highlight=True)
                 current_x = math_renderer.draw_operator(current_x, start_y, "+",
                                                         color=text_color, font_size=26)
                 current_x = math_renderer.draw_vector_math(current_x, start_y, scaled_v2,
                                                            color=(0, 0.5, 1), font_size=20, highlight=True)
-                current_x = math_renderer.draw_equals(current_x, start_y,
-                                                      color=text_color, font_size=26)
-                current_x = math_renderer.draw_vector_math(current_x, start_y, result,
-                                                           color=(0, 1, 0), font_size=20, highlight=True)
+                current_x = math_renderer.draw_equals_animated(current_x, start_y,
+                                                               anim_progress, color=text_color, font_size=26)
+
+                if anim_progress < 1.0:
+                    animated_result = [r * anim_progress for r in result_display]
+                    current_x = math_renderer.draw_vector_math(current_x, start_y, animated_result,
+                                                               color=(0, 1, 0), font_size=20, highlight=True)
+                else:
+                    current_x = math_renderer.draw_vector_math(current_x, start_y, result_display,
+                                                               color=(0, 1, 0), font_size=20, highlight=True)
 
     def get_max_from_vectors(self):
         """Vráti najväčšiu hodnotu zo všetkých vektorov - S OFFSETMI"""
