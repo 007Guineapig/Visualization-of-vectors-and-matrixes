@@ -3,6 +3,40 @@ from numpy import array, cross, linalg
 from math import sin, cos, pi
 
 
+class Colors:
+    """Moderná farebná paleta"""
+    # Dark theme
+    DARK_BG = (0.06, 0.07, 0.10)
+    DARK_SURFACE = (0.11, 0.12, 0.16)
+    DARK_CARD = (0.14, 0.16, 0.20)
+    DARK_HOVER = (0.20, 0.22, 0.28)
+
+    # Light theme
+    LIGHT_BG = (0.94, 0.95, 0.97)
+    LIGHT_SURFACE = (1.0, 1.0, 1.0)
+    LIGHT_CARD = (0.98, 0.98, 0.99)
+    LIGHT_HOVER = (0.90, 0.92, 0.95)
+
+    # Accent
+    PRIMARY = (0.30, 0.55, 0.95)
+    PRIMARY_HOVER = (0.40, 0.65, 1.0)
+    SECONDARY = (0.60, 0.35, 0.90)
+
+    # Vectors
+    VECTOR_A = (1.0, 0.55, 0.15)
+    VECTOR_B = (0.20, 0.60, 0.95)
+    VECTOR_RESULT = (0.70, 0.25, 0.85)
+    VECTOR_NEG = (0.95, 0.30, 0.55)
+
+    # Text
+    TEXT_DARK = (0.92, 0.94, 0.96)
+    TEXT_DARK_SEC = (0.55, 0.60, 0.68)
+    TEXT_LIGHT = (0.10, 0.12, 0.16)
+    TEXT_LIGHT_SEC = (0.40, 0.45, 0.52)
+
+    # Borders
+    BORDER_DARK = (0.25, 0.28, 0.34)
+    BORDER_LIGHT = (0.80, 0.82, 0.86)
 
 class VectorUtils:
     """Utility functions for vector operations"""
@@ -108,17 +142,78 @@ class InputHandler:
 
 
 class UIRenderer:
-    """Optimalizovaný renderer pre UI elementy"""
+    """Moderný UI renderer s vylepšeným dizajnom"""
+
+    @staticmethod
+    def draw_rounded_rect(x, y, w, h, radius, color, alpha=1.0):
+        """Nakreslí zaoblený obdĺžnik"""
+        if alpha < 1.0:
+            glEnable(GL_BLEND)
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+            glColor4f(color[0], color[1], color[2], alpha)
+        else:
+            glColor3f(*color)
+
+        radius = min(radius, w / 2, h / 2)
+        segments = 8
+
+        # Hlavné obdĺžniky
+        glBegin(GL_QUADS)
+        # Stred
+        glVertex2f(x + radius, y)
+        glVertex2f(x + w - radius, y)
+        glVertex2f(x + w - radius, y + h)
+        glVertex2f(x + radius, y + h)
+        # Ľavý
+        glVertex2f(x, y + radius)
+        glVertex2f(x + radius, y + radius)
+        glVertex2f(x + radius, y + h - radius)
+        glVertex2f(x, y + h - radius)
+        # Pravý
+        glVertex2f(x + w - radius, y + radius)
+        glVertex2f(x + w, y + radius)
+        glVertex2f(x + w, y + h - radius)
+        glVertex2f(x + w - radius, y + h - radius)
+        # Horný
+        glVertex2f(x + radius, y)
+        glVertex2f(x + w - radius, y)
+        glVertex2f(x + w - radius, y + radius)
+        glVertex2f(x + radius, y + radius)
+        # Dolný
+        glVertex2f(x + radius, y + h - radius)
+        glVertex2f(x + w - radius, y + h - radius)
+        glVertex2f(x + w - radius, y + h)
+        glVertex2f(x + radius, y + h)
+        glEnd()
+
+        # Rohové oblúky
+        corners = [
+            (x + radius, y + radius, 180, 270),
+            (x + w - radius, y + radius, 270, 360),
+            (x + w - radius, y + h - radius, 0, 90),
+            (x + radius, y + h - radius, 90, 180),
+        ]
+
+        for cx, cy, start, end in corners:
+            glBegin(GL_TRIANGLE_FAN)
+            glVertex2f(cx, cy)
+            for i in range(segments + 1):
+                angle = math.radians(start + (end - start) * i / segments)
+                glVertex2f(cx + radius * math.cos(angle), cy + radius * math.sin(angle))
+            glEnd()
+
+        if alpha < 1.0:
+            glDisable(GL_BLEND)
 
     @staticmethod
     def draw_text_2d(text, position, color=(1, 1, 1), font_size=20):
-        """Nakreslí text v 2D - OPRAVENÉ KOORDINÁTY"""
+        """Nakreslí text v 2D"""
         if not text:
-            return
+            return 0
 
         result = TextureCache.get_texture(text, "Arial", font_size, color)
         if result[0] is None:
-            return
+            return 0
 
         tex_id, w, h = result
 
@@ -131,7 +226,6 @@ class UIRenderer:
         glColor3f(1, 1, 1)
         glBindTexture(GL_TEXTURE_2D, tex_id)
 
-        # OPRAVA: Správne koordináty pre False flip
         glBegin(GL_QUADS)
         glTexCoord2f(0, 0);
         glVertex2f(x, y)
@@ -147,9 +241,11 @@ class UIRenderer:
         glDisable(GL_TEXTURE_2D)
         glDisable(GL_BLEND)
 
+        return w
+
     @staticmethod
-    def draw_button_2d(x, y, w, h, label, active=False):
-        """Nakreslí tlačidlo - OPRAVENÉ"""
+    def draw_button_2d(x, y, w, h, label, active=False, is_dark=True, hover=False, primary=False):
+        """Nakreslí moderné tlačidlo"""
         WIDTH, HEIGHT = pygame.display.get_window_size()
 
         glDisable(GL_DEPTH_TEST)
@@ -161,44 +257,56 @@ class UIRenderer:
         glPushMatrix()
         glLoadIdentity()
 
-        # Rectangle
-        if active:
-            glColor3f(0.5, 0.9, 0.5)
+        radius = 8
+
+        # Farby podľa stavu
+        if primary:
+            bg_color = Colors.PRIMARY_HOVER if hover else Colors.PRIMARY
+            text_color = (1, 1, 1)
+            # Tieň pre primary
+            shadow = (Colors.PRIMARY[0] * 0.4, Colors.PRIMARY[1] * 0.4, Colors.PRIMARY[2] * 0.4)
+            UIRenderer.draw_rounded_rect(x + 1, y + 2, w, h, radius, shadow, 0.3)
         else:
-            glColor3f(0.8, 0.8, 0.8)
-        glBegin(GL_QUADS)
-        glVertex2f(x, y)
-        glVertex2f(x + w, y)
-        glVertex2f(x + w, y + h)
-        glVertex2f(x, y + h)
-        glEnd()
+            if is_dark:
+                bg_color = Colors.DARK_HOVER if hover else (Colors.DARK_CARD if active else Colors.DARK_SURFACE)
+                text_color = Colors.TEXT_DARK
+                border_color = Colors.BORDER_DARK
+            else:
+                bg_color = Colors.LIGHT_HOVER if hover else (Colors.LIGHT_CARD if active else Colors.LIGHT_SURFACE)
+                text_color = Colors.TEXT_LIGHT
+                border_color = Colors.BORDER_LIGHT
 
-        # Border
-        glColor3f(0, 0, 0)
-        glBegin(GL_LINE_LOOP)
-        glVertex2f(x, y)
-        glVertex2f(x + w, y)
-        glVertex2f(x + w, y + h)
-        glVertex2f(x, y + h)
-        glEnd()
+        # Pozadie
+        UIRenderer.draw_rounded_rect(x, y, w, h, radius, bg_color)
 
-        # Text - použijem cache
+        # Okraj pre ne-primary tlačidlá
+        if not primary:
+            glLineWidth(1.0)
+            glColor3f(*border_color)
+            # Zjednodušený okraj
+            glBegin(GL_LINE_LOOP)
+            glVertex2f(x + radius, y)
+            glVertex2f(x + w - radius, y)
+            glVertex2f(x + w, y + radius)
+            glVertex2f(x + w, y + h - radius)
+            glVertex2f(x + w - radius, y + h)
+            glVertex2f(x + radius, y + h)
+            glVertex2f(x, y + h - radius)
+            glVertex2f(x, y + radius)
+            glEnd()
+
+        # Text
         if label:
-            result = TextureCache.get_texture(label, "Arial", 18, (0, 0, 0))
+            result = TextureCache.get_texture(label, "Arial", 15, text_color)
             if result[0] is not None:
                 tex_id, tw, th = result
-
                 glEnable(GL_TEXTURE_2D)
                 glEnable(GL_BLEND)
                 glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-
                 tx = x + (w - tw) / 2
                 ty = y + (h - th) / 2
-
                 glColor3f(1, 1, 1)
                 glBindTexture(GL_TEXTURE_2D, tex_id)
-
-                # OPRAVA: Správne koordináty
                 glBegin(GL_QUADS)
                 glTexCoord2f(0, 0);
                 glVertex2f(tx, ty)
@@ -209,7 +317,6 @@ class UIRenderer:
                 glTexCoord2f(0, 1);
                 glVertex2f(tx, ty + th)
                 glEnd()
-
                 glDisable(GL_TEXTURE_2D)
                 glDisable(GL_BLEND)
 
@@ -220,10 +327,9 @@ class UIRenderer:
         glEnable(GL_DEPTH_TEST)
 
     @staticmethod
-    def draw_input_box_3d(x, y, w, h, text, active=False,
-                          fill_color=(0.7, 0.7, 0.7),
-                          fill_color_outline=(0, 0, 0)):
-        """Nakreslí input box - OPRAVENÉ"""
+    def draw_input_box_3d(x, y, w, h, text, active=False, fill_color=None,
+                          fill_color_outline=None, is_dark=True):
+        """Nakreslí moderný input box"""
         WIDTH, HEIGHT = pygame.display.get_window_size()
 
         glMatrixMode(GL_PROJECTION)
@@ -235,45 +341,51 @@ class UIRenderer:
         glLoadIdentity()
         glDisable(GL_DEPTH_TEST)
 
-        # Background
-        r, g, b = fill_color
-        if active:
-            r, g, b = min(r + 0.2, 1.0), min(g + 0.2, 1.0), min(b + 0.2, 1.0)
-        glColor3f(r, g, b)
-        glBegin(GL_QUADS)
-        glVertex2f(x, y)
-        glVertex2f(x + w, y)
-        glVertex2f(x + w, y + h)
-        glVertex2f(x, y + h)
-        glEnd()
+        radius = 6
 
-        # Border
-        r, g, b = fill_color_outline
-        glLineWidth(4.0)
-        glColor3f(r, g, b)
+        # Farby
+        if is_dark:
+            bg_color = Colors.DARK_CARD if active else Colors.DARK_SURFACE
+            border_color = Colors.PRIMARY if active else Colors.BORDER_DARK
+            text_color = Colors.TEXT_DARK
+        else:
+            bg_color = Colors.LIGHT_SURFACE
+            border_color = Colors.PRIMARY if active else Colors.BORDER_LIGHT
+            text_color = Colors.TEXT_LIGHT
+
+        # Ak je zadaná vlastná farba okraja, použi ju
+        if fill_color_outline and not active:
+            border_color = fill_color_outline
+
+        # Pozadie
+        UIRenderer.draw_rounded_rect(x, y, w, h, radius, bg_color)
+
+        # Okraj
+        glLineWidth(2 if active else 1)
+        glColor3f(*border_color)
         glBegin(GL_LINE_LOOP)
-        glVertex2f(x, y)
-        glVertex2f(x + w, y)
-        glVertex2f(x + w, y + h)
-        glVertex2f(x, y + h)
+        glVertex2f(x + radius, y)
+        glVertex2f(x + w - radius, y)
+        glVertex2f(x + w, y + radius)
+        glVertex2f(x + w, y + h - radius)
+        glVertex2f(x + w - radius, y + h)
+        glVertex2f(x + radius, y + h)
+        glVertex2f(x, y + h - radius)
+        glVertex2f(x, y + radius)
         glEnd()
 
         # Text
         if text:
-            result = TextureCache.get_texture(text, "Arial", 18, (0, 0, 0))
+            result = TextureCache.get_texture(text, "Arial", 15, text_color)
             if result[0] is not None:
                 tex_id, tw, th = result
-
                 glEnable(GL_TEXTURE_2D)
                 glEnable(GL_BLEND)
                 glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-
+                tx = x + (w - tw) / 2
+                ty = y + (h - th) / 2
                 glColor3f(1, 1, 1)
                 glBindTexture(GL_TEXTURE_2D, tex_id)
-
-                # OPRAVA: Správne koordináty
-                tx = x + 5
-                ty = y + 5
                 glBegin(GL_QUADS)
                 glTexCoord2f(0, 0);
                 glVertex2f(tx, ty)
@@ -284,7 +396,79 @@ class UIRenderer:
                 glTexCoord2f(0, 1);
                 glVertex2f(tx, ty + th)
                 glEnd()
+                glDisable(GL_TEXTURE_2D)
+                glDisable(GL_BLEND)
 
+        # Kurzor keď je aktívny
+        if active and int(pygame.time.get_ticks() / 500) % 2 == 0:
+            cursor_x = x + w / 2
+            if text:
+                result = TextureCache.get_texture(text, "Arial", 15, text_color)
+                if result[0]:
+                    cursor_x = x + (w + result[1]) / 2 + 2
+            glColor3f(*Colors.PRIMARY)
+            glLineWidth(2)
+            glBegin(GL_LINES)
+            glVertex2f(cursor_x, y + 6)
+            glVertex2f(cursor_x, y + h - 6)
+            glEnd()
+
+        glEnable(GL_DEPTH_TEST)
+        glPopMatrix()
+        glMatrixMode(GL_PROJECTION)
+        glPopMatrix()
+        glMatrixMode(GL_MODELVIEW)
+
+    @staticmethod
+    def draw_card(x, y, w, h, is_dark=True, title=None):
+        """Nakreslí kartu/kontajner"""
+        WIDTH, HEIGHT = pygame.display.get_window_size()
+
+        glMatrixMode(GL_PROJECTION)
+        glPushMatrix()
+        glLoadIdentity()
+        glOrtho(0, WIDTH, HEIGHT, 0, -1, 1)
+        glMatrixMode(GL_MODELVIEW)
+        glPushMatrix()
+        glLoadIdentity()
+        glDisable(GL_DEPTH_TEST)
+
+        radius = 12
+
+        if is_dark:
+            bg_color = Colors.DARK_CARD
+            title_color = Colors.TEXT_DARK
+        else:
+            bg_color = Colors.LIGHT_CARD
+            title_color = Colors.TEXT_LIGHT
+
+        # Tieň
+        UIRenderer.draw_rounded_rect(x + 2, y + 3, w, h, radius, (0, 0, 0), 0.15)
+
+        # Pozadie
+        UIRenderer.draw_rounded_rect(x, y, w, h, radius, bg_color)
+
+        # Titulok
+        if title:
+            result = TextureCache.get_texture(title, "Arial", 16, title_color)
+            if result[0] is not None:
+                tex_id, tw, th = result
+                glEnable(GL_TEXTURE_2D)
+                glEnable(GL_BLEND)
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+                glColor3f(1, 1, 1)
+                glBindTexture(GL_TEXTURE_2D, tex_id)
+                tx, ty = x + 16, y + 14
+                glBegin(GL_QUADS)
+                glTexCoord2f(0, 0);
+                glVertex2f(tx, ty)
+                glTexCoord2f(1, 0);
+                glVertex2f(tx + tw, ty)
+                glTexCoord2f(1, 1);
+                glVertex2f(tx + tw, ty + th)
+                glTexCoord2f(0, 1);
+                glVertex2f(tx, ty + th)
+                glEnd()
                 glDisable(GL_TEXTURE_2D)
                 glDisable(GL_BLEND)
 
@@ -293,6 +477,7 @@ class UIRenderer:
         glMatrixMode(GL_PROJECTION)
         glPopMatrix()
         glMatrixMode(GL_MODELVIEW)
+
 
 class EnhancedUIRenderer(UIRenderer):
     """Extended UI renderer with additional components"""
@@ -1276,11 +1461,23 @@ class Config:
     DROPDOWN_ITEM_HEIGHT = 25
 
     # Colors
-    COL_COLORS_OUTLINE = [(1.0, 0.0, 1.0), (0.0, 1.0, 1.0), (1.0, 1.0, 0.0)]
+    COL_COLORS_OUTLINE = [Colors.VECTOR_A, Colors.VECTOR_B, Colors.SECONDARY]
 
 
 class Camera:
     """Správa kamery a viewportu"""
+
+    def _lerp_angle(self, start, end, t):
+        """Interpolácia uhlov - vždy ide kratšou cestou"""
+        diff = end - start
+
+        # Normalizuj rozdiel na rozsah -180 až 180
+        while diff > 180:
+            diff -= 360
+        while diff < -180:
+            diff += 360
+
+        return start + diff * t
 
     def __init__(self, width, height):
         self.width = width
@@ -1316,7 +1513,6 @@ class Camera:
 
     # V triede Camera - opravená metóda move_to_plane pre lepšie uhly
     # V triede Camera - opravená metóda move_to_plane
-
     def move_to_plane(self, plane_type, distance=10.0, custom_view=None):
         """Nastaví cieľovú pozíciu kamery pre danú rovinu"""
         self.start_distance = self.distance
@@ -1329,13 +1525,13 @@ class Camera:
             self.target_elevation = custom_view['elevation']
         elif plane_type == "XY":  # Z=0, pozeráme SPREDU (v smere osi Z)
             self.target_azimuth = 0.0
-            self.target_elevation = 5.0  # Takmer rovnobežne s XY rovinou
+            self.target_elevation = 0.0
         elif plane_type == "XZ":  # Y=0, pozeráme ZHORA (v smere osi Y)
             self.target_azimuth = 0.0
-            self.target_elevation = 89.9  # Takmer presne zhora (nie 90 kvôli gimbal lock)
+            self.target_elevation = 90.0  # OPRAVA: presne 90°
         elif plane_type == "YZ":  # X=0, pozeráme ZBOKU (v smere osi X)
             self.target_azimuth = 90.0
-            self.target_elevation = 5.0  # Takmer rovnobežne s YZ rovinou
+            self.target_elevation = 0.0
         else:  # Všeobecný 3D pohľad
             self.target_azimuth = 45.0
             self.target_elevation = 25.0
@@ -1362,7 +1558,11 @@ class Camera:
             smooth_t = t * t * (3.0 - 2.0 * t)
 
             self.distance = self.start_distance + (self.target_distance - self.start_distance) * smooth_t
-            self.azimuth = self.start_azimuth + (self.target_azimuth - self.start_azimuth) * smooth_t
+
+            # OPRAVA: Použiť lerp_angle pre azimut
+            self.azimuth = self._lerp_angle(self.start_azimuth, self.target_azimuth, smooth_t)
+
+            # Elevácia nepotrebuje špeciálnu interpoláciu (je obmedzená na -90 až 90)
             self.elevation = self.start_elevation + (self.target_elevation - self.start_elevation) * smooth_t
 
     def get_position(self):
@@ -1386,9 +1586,19 @@ class Camera:
 
         glMatrixMode(GL_MODELVIEW)
         glLoadIdentity()
+
+        # Pri pohľade presne zhora/zdola použijem iný "up" vektor
+        if abs(self.elevation) > 89.0:
+            # Pozeráme zhora alebo zdola - up vektor musí byť v XZ rovine
+            up_x = -math.sin(math.radians(self.azimuth))
+            up_y = 0
+            up_z = -math.cos(math.radians(self.azimuth))
+        else:
+            up_x, up_y, up_z = 0, 1, 0
+
         gluLookAt(cam_x, cam_y, cam_z,
                   self.target[0], self.target[1], self.target[2],
-                  0, 1, 0)
+                  up_x, up_y, up_z)
 
     def setup_2d_projection(self):
         """Nastaví 2D ortografickú projekciu s aspect ratio"""
@@ -1472,6 +1682,57 @@ class GridRenderer:
 
     # Cache pre opakované výpočty
     _plane_tangents_cache = {}
+
+    @staticmethod
+    def draw_filled_plane(normal, center=(0, 0, 0), size=10.0, color=(0.5, 0.5, 0.0), alpha=1.0, transparent=False):
+        """Nakreslí vyplnenú rovinu definovanú normálou"""
+        normal = np.array(normal, dtype=np.float32)
+        norm_length = np.linalg.norm(normal)
+        if norm_length < 1e-6:
+            return
+        normal = normal / norm_length
+
+        # Nájdi dva kolmé vektory v rovine
+        if abs(normal[2]) < 0.9:
+            ref = np.array([0, 0, 1], dtype=np.float32)
+        else:
+            ref = np.array([1, 0, 0], dtype=np.float32)
+
+        tangent1 = np.cross(normal, ref)
+        tangent1 = tangent1 / np.linalg.norm(tangent1)
+        tangent2 = np.cross(normal, tangent1)
+        tangent2 = tangent2 / np.linalg.norm(tangent2)
+
+        center = np.array(center, dtype=np.float32)
+
+        # Vypočítaj 4 rohy roviny
+        corner1 = center - tangent1 * size - tangent2 * size
+        corner2 = center + tangent1 * size - tangent2 * size
+        corner3 = center + tangent1 * size + tangent2 * size
+        corner4 = center - tangent1 * size + tangent2 * size
+
+        # Posuň rovinu mierne dozadu aby vektory boli vždy viditeľné
+        glEnable(GL_POLYGON_OFFSET_FILL)
+        glPolygonOffset(1.0, 1.0)  # Posunie rovinu mierne dozadu v depth bufferi
+
+        if transparent:
+            glEnable(GL_BLEND)
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+            glColor4f(color[0], color[1], color[2], alpha)
+        else:
+            glColor3f(color[0], color[1], color[2])
+
+        glBegin(GL_QUADS)
+        glVertex3f(corner1[0], corner1[1], corner1[2])
+        glVertex3f(corner2[0], corner2[1], corner2[2])
+        glVertex3f(corner3[0], corner3[1], corner3[2])
+        glVertex3f(corner4[0], corner4[1], corner4[2])
+        glEnd()
+
+        glDisable(GL_POLYGON_OFFSET_FILL)
+
+        if transparent:
+            glDisable(GL_BLEND)
 
     @staticmethod
     def draw_grid_2d(ortho_scale, pan_x, pan_y, width, height, step=1.0, z=-0.1, max_lines=100):
@@ -1589,7 +1850,7 @@ class GridRenderer:
         glPushAttrib(GL_DEPTH_BUFFER_BIT)
         glDepthFunc(GL_LEQUAL)
         glEnable(GL_POLYGON_OFFSET_LINE)
-        glPolygonOffset(-2.0, -2.0)
+        glPolygonOffset(1.0, 1.0)
 
         glLineWidth(2.0)
         glBegin(GL_LINES)
@@ -1602,21 +1863,21 @@ class GridRenderer:
             fi = float(i)
 
             # XZ plane (červená) - na Y=0
-            glColor3f(0.5, 0.0, 0.0)
+            glColor3f(0.9, 0.2, 0.2)
             glVertex3f(-size, offset, fi)
             glVertex3f(size, offset, fi)
             glVertex3f(fi, offset, -size)
             glVertex3f(fi, offset, size)
 
             # XY plane (zelená) - na Z=0
-            glColor3f(0.0, 0.5, 0.0)
+            glColor3f(0.2, 0.9, 0.2)
             glVertex3f(-size, fi, offset)
             glVertex3f(size, fi, offset)
             glVertex3f(fi, -size, offset)
             glVertex3f(fi, size, offset)
 
             # YZ plane (modrá) - na X=0
-            glColor3f(0.0, 0.0, 0.5)
+            glColor3f(0.2, 0.2, 0.9)
             glVertex3f(offset, -size, fi)
             glVertex3f(offset, size, fi)
             glVertex3f(offset, fi, -size)
@@ -1629,7 +1890,10 @@ class GridRenderer:
 
     @staticmethod
     def draw_planes_3d(size=2.0, step=1.0, colored=False):
-        """Nakreslí 3D plochy - OPTIMALIZOVANÉ"""
+        """Nakreslí 3D plochy - BEZ Z-FIGHTING"""
+        glEnable(GL_POLYGON_OFFSET_FILL)
+        glPolygonOffset(2.0, 2.0)
+
         # Farby pre plochy
         if colored:
             plane_color = (0.8, 0.8, 0.8)
@@ -1639,10 +1903,7 @@ class GridRenderer:
             yz_color = (0, 0, 1.0)
 
         # XZ plane (Y=0)
-        if colored:
-            glColor3f(*plane_color)
-        else:
-            glColor3f(*xz_color)
+        glColor3f(*(plane_color if colored else xz_color))
         glBegin(GL_QUADS)
         glVertex3f(-size, 0, -size)
         glVertex3f(size, 0, -size)
@@ -1651,10 +1912,7 @@ class GridRenderer:
         glEnd()
 
         # XY plane (Z=0)
-        if colored:
-            glColor3f(*plane_color)
-        else:
-            glColor3f(*xy_color)
+        glColor3f(*(plane_color if colored else xy_color))
         glBegin(GL_QUADS)
         glVertex3f(-size, -size, 0)
         glVertex3f(size, -size, 0)
@@ -1663,10 +1921,7 @@ class GridRenderer:
         glEnd()
 
         # YZ plane (X=0)
-        if colored:
-            glColor3f(*plane_color)
-        else:
-            glColor3f(*yz_color)
+        glColor3f(*(plane_color if colored else yz_color))
         glBegin(GL_QUADS)
         glVertex3f(0, -size, -size)
         glVertex3f(0, size, -size)
@@ -1674,49 +1929,112 @@ class GridRenderer:
         glVertex3f(0, -size, size)
         glEnd()
 
-        # Grid čiary s agresívnejším offsetom
-        glPushAttrib(GL_DEPTH_BUFFER_BIT)
-        glDepthFunc(GL_LEQUAL)
-        glEnable(GL_POLYGON_OFFSET_LINE)
-        glPolygonOffset(-3.0, -3.0)
+        glDisable(GL_POLYGON_OFFSET_FILL)
 
+        # Grid čiary - KAŽDÁ ROVINA MÁ INÝ OFFSET
         glColor3f(0, 0, 0)
         glLineWidth(1.5)
-        glBegin(GL_LINES)
 
-        offset = 0.01
         step_int = max(1, int(step))
         size_int = int(size)
 
-        # XZ plane grid (na Y=0)
+        # XZ plane grid (Y = 0.01)
+        glBegin(GL_LINES)
         for x in range(-size_int, size_int + 1, step_int):
-            glVertex3f(x, offset, -size)
-            glVertex3f(x, offset, size)
+            glVertex3f(x, 0.01, -size)
+            glVertex3f(x, 0.01, size)
         for z in range(-size_int, size_int + 1, step_int):
-            glVertex3f(-size, offset, z)
-            glVertex3f(size, offset, z)
+            glVertex3f(-size, 0.01, z)
+            glVertex3f(size, 0.01, z)
+        glEnd()
 
-        # XY plane grid (na Z=0)
+        # XY plane grid (Z = 0.02)
+        glBegin(GL_LINES)
         for x in range(-size_int, size_int + 1, step_int):
-            glVertex3f(x, -size, offset)
-            glVertex3f(x, size, offset)
+            glVertex3f(x, -size, 0.02)
+            glVertex3f(x, size, 0.02)
         for y in range(-size_int, size_int + 1, step_int):
-            glVertex3f(-size, y, offset)
-            glVertex3f(size, y, offset)
+            glVertex3f(-size, y, 0.02)
+            glVertex3f(size, y, 0.02)
+        glEnd()
 
-        # YZ plane grid (na X=0)
+        # YZ plane grid (X = 0.03)
+        glBegin(GL_LINES)
         for y in range(-size_int, size_int + 1, step_int):
-            glVertex3f(offset, y, -size)
-            glVertex3f(offset, y, size)
+            glVertex3f(0.03, y, -size)
+            glVertex3f(0.03, y, size)
         for z in range(-size_int, size_int + 1, step_int):
-            glVertex3f(offset, -size, z)
-            glVertex3f(offset, size, z)
+            glVertex3f(0.03, -size, z)
+            glVertex3f(0.03, size, z)
+        glEnd()
+
+
+
+    @staticmethod
+    def draw_grid_in_plane(normal, center=(0, 0, 0), size=10.0, step=1.0, color=(0.4, 0.4, 0.4)):
+        """Nakreslí grid v ľubovoľnej rovine definovanej normálou - OPTIMALIZOVANÉ"""
+        # Normalizuj normálu
+        normal = np.array(normal, dtype=np.float32)
+        norm_length = np.linalg.norm(normal)
+        if norm_length < 1e-6:
+            return
+        normal = normal / norm_length
+
+        # Cache key pre tangent vektory
+        normal_key = (round(normal[0], 4), round(normal[1], 4), round(normal[2], 4))
+
+        if normal_key in GridRenderer._plane_tangents_cache:
+            tangent1, tangent2 = GridRenderer._plane_tangents_cache[normal_key]
+        else:
+            # Nájdi dva kolmé vektory v rovine
+            if abs(normal[2]) < 0.9:
+                ref = np.array([0, 0, 1], dtype=np.float32)
+            else:
+                ref = np.array([1, 0, 0], dtype=np.float32)
+
+            tangent1 = np.cross(normal, ref)
+            tangent1 = tangent1 / np.linalg.norm(tangent1)
+            tangent2 = np.cross(normal, tangent1)
+            tangent2 = tangent2 / np.linalg.norm(tangent2)
+
+            # Ulož do cache
+            GridRenderer._plane_tangents_cache[normal_key] = (tangent1.copy(), tangent2.copy())
+
+        center = np.array(center, dtype=np.float32)
+
+        # Nakresli grid s polygon offset
+        glPushAttrib(GL_LINE_BIT | GL_CURRENT_BIT | GL_DEPTH_BUFFER_BIT)
+        glDepthFunc(GL_LEQUAL)
+        glEnable(GL_POLYGON_OFFSET_LINE)
+        glPolygonOffset(1.0, 1.0)
+
+        glLineWidth(1.5)
+        glColor3f(color[0], color[1], color[2])
+        glBegin(GL_LINES)
+
+        size_int = int(size)
+        step_int = max(1, int(step))
+
+        # Čiary pozdĺž tangent1
+        for i in range(-size_int, size_int + 1, step_int):
+            t = float(i)
+            p1 = center + tangent1 * (-size) + tangent2 * t
+            p2 = center + tangent1 * size + tangent2 * t
+            glVertex3f(p1[0], p1[1], p1[2])
+            glVertex3f(p2[0], p2[1], p2[2])
+
+        # Čiary pozdĺž tangent2
+        for i in range(-size_int, size_int + 1, step_int):
+            t = float(i)
+            p1 = center + tangent1 * t + tangent2 * (-size)
+            p2 = center + tangent1 * t + tangent2 * size
+            glVertex3f(p1[0], p1[1], p1[2])
+            glVertex3f(p2[0], p2[1], p2[2])
 
         glEnd()
 
         glDisable(GL_POLYGON_OFFSET_LINE)
         glPopAttrib()
-
     @classmethod
     def clear_cache(cls):
         """Vymaže cache - volať pri zmene scény"""
@@ -1746,6 +2064,130 @@ class AnimationController:
 
         self.operation_plane_normal = None  # PRIDAJ TOTO
 
+    def compute_optimal_view_for_3d(self):
+        """Vypočíta optimálny uhol pohľadu pre 3D vektory pomocou PCA"""
+        if not self.operands:
+            return None
+
+        simple_view = self.compute_simple_view_for_vectors()
+        if simple_view:
+            return simple_view
+
+        # Fallback na PCA
+        points = []
+        for op in self.operands:
+            if isinstance(op[0], (list, tuple)):
+                for row in op:
+                    vec3d = list(row) + [0] * (3 - len(row))
+                    points.append(vec3d[:3])
+            else:
+                vec3d = list(op) + [0] * (3 - len(op))
+                points.append(vec3d[:3])
+
+        if self.result:
+            if isinstance(self.result[0], (list, tuple)):
+                for row in self.result:
+                    vec3d = list(row) + [0] * (3 - len(row))
+                    points.append(vec3d[:3])
+            else:
+                vec3d = list(self.result) + [0] * (3 - len(self.result))
+                points.append(vec3d[:3])
+
+        points.append([0, 0, 0])
+
+        if len(points) < 3:
+            return None
+
+        points_np = np.array(points, dtype=np.float64)
+        centroid = np.mean(points_np, axis=0)
+        centered = points_np - centroid
+
+        cov_matrix = np.cov(centered.T)
+        eigenvalues, eigenvectors = np.linalg.eig(cov_matrix)
+
+        idx = eigenvalues.argsort()[::-1]
+        eigenvectors = eigenvectors[:, idx]
+
+        normal = np.real(eigenvectors[:, 2])
+        normal = normal / np.linalg.norm(normal)
+
+        if normal[1] > 0:
+            normal = -normal
+
+        elevation = np.degrees(np.arcsin(np.clip(-normal[1], -1.0, 1.0)))
+        azimuth = np.degrees(np.arctan2(-normal[0], -normal[2]))
+
+        if elevation > 89.5:
+            elevation = 89.5
+
+        return {
+            'azimuth': azimuth,
+            'elevation': elevation,
+            'normal': normal.tolist()
+        }
+
+    def compute_simple_view_for_vectors(self):
+        """Vypočíta optimálny uhol pohľadu pre vektory v rovine"""
+        if not self.operands or len(self.operands) < 1:
+            return None
+
+        # Zozbieraj všetky vektory
+        vectors_3d = []
+
+        for operand in self.operands:
+            if isinstance(operand[0], (list, tuple)):
+                for row in operand:
+                    vec3d = list(row) + [0] * (3 - len(row))
+                    vec3d = vec3d[:3]
+                    if sum(abs(x) for x in vec3d) > 1e-6:
+                        vectors_3d.append(np.array(vec3d, dtype=np.float64))
+            else:
+                vec3d = list(operand) + [0] * (3 - len(operand))
+                vec3d = vec3d[:3]
+                if sum(abs(x) for x in vec3d) > 1e-6:
+                    vectors_3d.append(np.array(vec3d, dtype=np.float64))
+
+        if len(vectors_3d) < 2:
+            return None
+
+        # Nájdi 2 nelineárne závislé vektory pre cross product
+        best_normal = None
+        best_norm = 0
+
+        for i in range(len(vectors_3d)):
+            for j in range(i + 1, len(vectors_3d)):
+                v1 = vectors_3d[i]
+                v2 = vectors_3d[j]
+
+                normal = np.cross(v1, v2)
+                norm = np.linalg.norm(normal)
+
+                if norm > best_norm:
+                    best_norm = norm
+                    best_normal = normal
+
+        if best_normal is None or best_norm < 1e-6:
+            return None
+
+        normal = best_normal / best_norm
+
+        # Orientácia - preferujeme pohľad "spredu/zhora"
+        if normal[1] > 0:
+            normal = -normal
+
+        # Výpočet uhlov
+        elevation = np.degrees(np.arcsin(np.clip(-normal[1], -1.0, 1.0)))
+        azimuth = np.degrees(np.arctan2(-normal[0], -normal[2]))
+
+        # Žiadne umelé limity - ponechaj presné hodnoty
+        if elevation > 89.5:
+            elevation = 89.5
+
+        return {
+            'azimuth': azimuth,
+            'elevation': elevation,
+            'normal': normal.tolist()
+        }
     def compute_optimal_view_for_current_step(self):
         """Vypočíta optimálnu pozíciu kamery pre aktuálny krok animácie"""
         if not self.current_operation:
@@ -1874,35 +2316,31 @@ class AnimationController:
         }
 
     # V triede AnimationController - opravená metóda compute_simple_view_for_vectors
-    # V triede AnimationController - opravená metóda compute_simple_view_for_vectors
-
     def compute_simple_view_for_vectors(self):
-        """Jednoduchší výpočet optimálneho pohľadu pre 2 vektory"""
+        """Vypočíta optimálny uhol pohľadu pre vektory v rovine"""
         if not self.operands or len(self.operands) < 1:
             return None
 
-        # Zozbieraj všetky vektory (aj z matíc)
+        # Zozbieraj všetky vektory
         vectors_3d = []
 
         for operand in self.operands:
             if isinstance(operand[0], (list, tuple)):
-                # Matica - vezmi všetky riadky
                 for row in operand:
                     vec3d = list(row) + [0] * (3 - len(row))
                     vec3d = vec3d[:3]
                     if sum(abs(x) for x in vec3d) > 1e-6:
-                        vectors_3d.append(np.array(vec3d))
+                        vectors_3d.append(np.array(vec3d, dtype=np.float64))
             else:
-                # Vektor
                 vec3d = list(operand) + [0] * (3 - len(operand))
                 vec3d = vec3d[:3]
                 if sum(abs(x) for x in vec3d) > 1e-6:
-                    vectors_3d.append(np.array(vec3d))
+                    vectors_3d.append(np.array(vec3d, dtype=np.float64))
 
         if len(vectors_3d) < 2:
             return None
 
-        # Skús nájsť 2 nelineárne závislé vektory pre cross product
+        # Nájdi 2 nelineárne závislé vektory pre cross product
         best_normal = None
         best_norm = 0
 
@@ -1923,95 +2361,18 @@ class AnimationController:
 
         normal = best_normal / best_norm
 
-        # OPRAVA: Správny prevod normály roviny na uhly kamery
-        # Kamera by mala byť umiestnená v smere normály a pozerať na origin
-
-        # Azimuth: uhol v XZ rovine (okolo Y osi)
-        azimuth = np.degrees(np.arctan2(normal[0], normal[2]))
-
-        # Elevation: uhol od horizontálnej roviny
-        # Ak normála smeruje v Y, elevation by mal byť vysoký (pozeráme zhora)
-        # Ak normála smeruje v XZ rovine, elevation by mal byť nízky
-        horizontal_length = np.sqrt(normal[0] ** 2 + normal[2] ** 2)
-        elevation = np.degrees(np.arctan2(normal[1], horizontal_length))
-
-        # Obmedz elevation na rozumné hodnoty
-        elevation = max(10, min(85, elevation))
-
-        # Ak je elevation záporný, otočíme pohľad
-        if elevation < 0:
-            elevation = -elevation
-            azimuth = azimuth + 180
-
-        return {
-            'azimuth': azimuth,
-            'elevation': elevation,
-            'normal': normal.tolist()
-        }
-
-    def compute_optimal_view_for_3d(self):
-        """Vypočíta optimálny uhol pohľadu pre 3D vektory pomocou PCA"""
-        if not self.operands:
-            return None
-
-        # Pre jednoduché prípady (2 vektory) použi cross product
-        if len(self.operands) == 2:
-            simple_view = self.compute_simple_view_for_vectors()
-            if simple_view:
-                return simple_view
-
-        # Zozbieraj všetky body
-        points = []
-        for op in self.operands:
-            if isinstance(op[0], (list, tuple)):  # Matica
-                for row in op:
-                    vec3d = list(row) + [0] * (3 - len(row))
-                    points.append(vec3d[:3])
-            else:  # Vektor
-                vec3d = list(op) + [0] * (3 - len(op))
-                points.append(vec3d[:3])
-
-        # Pridaj aj výsledok ak existuje
-        if self.result:
-            if isinstance(self.result[0], (list, tuple)):
-                for row in self.result:
-                    vec3d = list(row) + [0] * (3 - len(row))
-                    points.append(vec3d[:3])
-            else:
-                vec3d = list(self.result) + [0] * (3 - len(self.result))
-                points.append(vec3d[:3])
-
-        if len(points) < 2:
-            return None
-
-        # Vypočítaj centroid
-        points_np = np.array(points)
-        centroid = np.mean(points_np, axis=0)
-
-        # Centroid bod do originu
-        centered = points_np - centroid
-
-        # PCA - nájdi hlavné smery
-        cov_matrix = np.cov(centered.T)
-        eigenvalues, eigenvectors = np.linalg.eig(cov_matrix)
-
-        # Zoraď podľa eigenvalues (najväčší = hlavný smer)
-        idx = eigenvalues.argsort()[::-1]
-        eigenvectors = eigenvectors[:, idx]
-
-        # Normálový vektor roviny = tretí eigenvektor (najmenší)
-        normal = eigenvectors[:, 2]
-
-        # Zabezpeč že normála smeruje "hore"
-        if normal[1] < 0:
+        # Orientácia - preferujeme pohľad "spredu/zhora"
+        if normal[1] > 0:
             normal = -normal
 
-        # Vypočítaj azimuth a elevation z normály
-        azimuth = np.degrees(np.arctan2(normal[0], normal[2]))
-        elevation = np.degrees(np.arcsin(np.clip(normal[1] / np.linalg.norm(normal), -1.0, 1.0)))
+        # Výpočet uhlov
+        elevation = np.degrees(np.arcsin(np.clip(-normal[1], -1.0, 1.0)))
+        azimuth = np.degrees(np.arctan2(-normal[0], -normal[2]))
 
-        # Prispôsob uhly pre lepší pohľad
-        elevation = max(15, min(75, abs(elevation)))
+        # OPRAVA: Žiadne umelé limity - ponechaj presné hodnoty
+        # Len extrémny limit pre numerickú stabilitu gluLookAt
+        if elevation > 89.5:
+            elevation = 89.5
 
         return {
             'azimuth': azimuth,
@@ -2019,6 +2380,69 @@ class AnimationController:
             'normal': normal.tolist()
         }
 
+    def compute_simple_view_for_vectors(self):
+        """Vypočíta optimálny uhol pohľadu pre vektory v rovine"""
+        if not self.operands or len(self.operands) < 1:
+            return None
+
+        # Zozbieraj všetky vektory
+        vectors_3d = []
+
+        for operand in self.operands:
+            if isinstance(operand[0], (list, tuple)):
+                for row in operand:
+                    vec3d = list(row) + [0] * (3 - len(row))
+                    vec3d = vec3d[:3]
+                    if sum(abs(x) for x in vec3d) > 1e-6:
+                        vectors_3d.append(np.array(vec3d, dtype=np.float64))
+            else:
+                vec3d = list(operand) + [0] * (3 - len(operand))
+                vec3d = vec3d[:3]
+                if sum(abs(x) for x in vec3d) > 1e-6:
+                    vectors_3d.append(np.array(vec3d, dtype=np.float64))
+
+        if len(vectors_3d) < 2:
+            return None
+
+        # Nájdi 2 nelineárne závislé vektory pre cross product
+        best_normal = None
+        best_norm = 0
+
+        for i in range(len(vectors_3d)):
+            for j in range(i + 1, len(vectors_3d)):
+                v1 = vectors_3d[i]
+                v2 = vectors_3d[j]
+
+                normal = np.cross(v1, v2)
+                norm = np.linalg.norm(normal)
+
+                if norm > best_norm:
+                    best_norm = norm
+                    best_normal = normal
+
+        if best_normal is None or best_norm < 1e-6:
+            return None
+
+        normal = best_normal / best_norm
+
+        # Orientácia - preferujeme pohľad "spredu/zhora"
+        if normal[1] > 0:
+            normal = -normal
+
+        # Výpočet uhlov
+        elevation = np.degrees(np.arcsin(np.clip(-normal[1], -1.0, 1.0)))
+        azimuth = np.degrees(np.arctan2(-normal[0], -normal[2]))
+
+        # OPRAVA: Žiadne umelé limity - ponechaj presné hodnoty
+        # Len extrémny limit pre numerickú stabilitu gluLookAt
+        if elevation > 89.5:
+            elevation = 89.5
+
+        return {
+            'azimuth': azimuth,
+            'elevation': elevation,
+            'normal': normal.tolist()
+        }
     # V triede AnimationController - opravená metóda detect_operation_plane
 
     def detect_operation_plane(self, tolerance=1e-4):  # Zvýšená tolerancia z 1e-6
@@ -2108,6 +2532,7 @@ class AnimationController:
             if optimal_view and 'normal' in optimal_view:
                 return optimal_view['normal']
         return [0, 0, 1]  # Default - XY rovina
+
     def next_step(self):
         """Move to next step with animation"""
         if self.current_step < self.max_steps:
@@ -2977,6 +3402,7 @@ class TextureCache:
         cls._cache.clear()
         cls._access_order.clear()
 
+
 class FontCache:
     """Cache pre fonty - načíta font len raz"""
     _fonts = {}
@@ -2991,7 +3417,6 @@ class FontCache:
 
 class AxesRenderer:
     """Renderer pre súradnicové osi"""
-
 
     @staticmethod
     def draw_axes_2d(ortho_scale, pan_x, pan_y, width, height, ui_renderer):
@@ -3122,10 +3547,8 @@ class Application:
         self._min_frame_time = 1.0 / 60.0  # Max 60 FPS
         self.RESULT_COLOR = (0.5, 0, 0.5)
         self.screen = pygame.display.set_mode((900, 700), DOUBLEBUF | OPENGL | RESIZABLE)
-        #self.width = self.screen.get_width()
-        #self.height = self.screen.get_height()
 
-        self.width,self.height = pygame.display.get_window_size()
+        self.width, self.height = pygame.display.get_window_size()
 
         pygame.display.set_caption("XYZ axes — OOP Version")
 
@@ -3151,11 +3574,13 @@ class Application:
         self.is_not_baza = True
         self.view_2d_mode = True
         self.background_dark = True
+        self._update_background_color()
         self.grid_mode = 0
+        self.plane_grid_mode = 1  # NOVÉ: 0=vypnutý, 1=grid, 2=jemný, 3=hrubý, 4=vyplnená+grid, 5=vyplnená
         self.show_axes = True
         self.vectors_as_points = True
 
-        # Vectors - OPRAVA: už nepoužívame priamo animated_vectors
+        # Vectors
         self.saved_baza = []
         self.pending_vector = None
 
@@ -3168,7 +3593,7 @@ class Application:
         self.dropdown_open = False
         self.dropdown_rect = pygame.Rect(10, 10, 150, 30)
 
-        # PRIDAJ: Inicializuj pygame font
+        # Inicializuj pygame font
         pygame.font.init()
 
     def setup_opengl(self):
@@ -3183,9 +3608,10 @@ class Application:
         glClearColor(0.0, 0.0, 0.0, 1.0)
 
     def run_startup_screen(self):
-        """Spustí úvodný startup screen"""
+        """Moderný startup screen"""
         while self.startup_screen and self.running:
             dt = self.clock.tick(Config.FPS) / 1000.0
+            mx, my = pygame.mouse.get_pos()
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -3200,66 +3626,84 @@ class Application:
                     glViewport(0, 0, self.width, self.height)
 
                 elif event.type == pygame.MOUSEBUTTONDOWN:
-                    mx, my = event.pos
-                    button_w, button_h = 200, 60
-                    button_2d_rect = pygame.Rect(self.width // 2 - button_w - 20,
-                                                 self.height // 2 - button_h // 2,
-                                                 button_w, button_h)
-                    button_3d_rect = pygame.Rect(self.width // 2 + 20,
-                                                 self.height // 2 - button_h // 2,
-                                                 button_w, button_h)
-                    toggle_bg_rect = pygame.Rect(20, self.height - 50, 120, 35)
+                    # Definície tlačidiel
+                    cx, cy = self.width // 2, self.height // 2
+                    btn_w, btn_h = 180, 52
+                    gap = 24
 
-                    if toggle_bg_rect.collidepoint(mx, my):
+                    btn_2d = pygame.Rect(cx - btn_w - gap // 2, cy + 30, btn_w, btn_h)
+                    btn_3d = pygame.Rect(cx + gap // 2, cy + 30, btn_w, btn_h)
+                    toggle = pygame.Rect(30, self.height - 60, 130, 38)
+
+                    if toggle.collidepoint(mx, my):
                         self.background_dark = not self.background_dark
-                    elif button_2d_rect.collidepoint(mx, my):
+                    elif btn_2d.collidepoint(mx, my):
                         self.view_2d_mode = True
                         self.startup_screen = False
-                    elif button_3d_rect.collidepoint(mx, my):
+                    elif btn_3d.collidepoint(mx, my):
                         self.view_2d_mode = False
                         self.startup_screen = False
 
-            # Render startup screen
+            # === RENDER ===
+            if self.background_dark:
+                glClearColor(*Colors.DARK_BG, 1.0)
+            else:
+                glClearColor(*Colors.LIGHT_BG, 1.0)
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+
             glMatrixMode(GL_PROJECTION)
             glLoadIdentity()
             glOrtho(0, self.width, self.height, 0, -1, 1)
             glMatrixMode(GL_MODELVIEW)
             glLoadIdentity()
 
-            if self.background_dark:
-                glClearColor(0.0, 0.0, 0.0, 1.0)
-            else:
-                glClearColor(1.0, 1.0, 1.0, 1.0)
+            # Farby textu
+            title_col = Colors.TEXT_DARK if self.background_dark else Colors.TEXT_LIGHT
+            sub_col = Colors.TEXT_DARK_SEC if self.background_dark else Colors.TEXT_LIGHT_SEC
 
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+            cx, cy = self.width // 2, self.height // 2
 
-            button_w, button_h = 200, 60
-            button_2d_rect = pygame.Rect(self.width // 2 - button_w - 20,
-                                         self.height // 2 - button_h // 2,
-                                         button_w, button_h)
-            button_3d_rect = pygame.Rect(self.width // 2 + 20,
-                                         self.height // 2 - button_h // 2,
-                                         button_w, button_h)
-            toggle_bg_rect = pygame.Rect(20, self.height - 50, 120, 35)
+            # Titulok
+            self.ui_renderer.draw_text_2d("Linear Algebra Visualizer",
+                                          (cx - 160, cy - 100), title_col, 28)
+            self.ui_renderer.draw_text_2d("Interaktívna vizualizácia vektorových operácií",
+                                          (cx - 170, cy - 50), sub_col, 16)
+            self.ui_renderer.draw_text_2d("Vyberte režim zobrazenia:",
+                                          (cx - 95, cy - 10), sub_col, 15)
 
-            self.ui_renderer.draw_button_2d(button_2d_rect.x, button_2d_rect.y,
-                                            button_2d_rect.w, button_2d_rect.h,
-                                            "2D režim", active=True)
-            self.ui_renderer.draw_button_2d(button_3d_rect.x, button_3d_rect.y,
-                                            button_3d_rect.w, button_3d_rect.h,
-                                            "3D režim", active=True)
-            label = "Dark Mode" if self.background_dark else "Light Mode"
-            self.ui_renderer.draw_button_2d(toggle_bg_rect.x, toggle_bg_rect.y,
-                                            toggle_bg_rect.width, toggle_bg_rect.height,
-                                            label, active=True)
+            # Tlačidlá
+            btn_w, btn_h = 180, 52
+            gap = 24
+
+            btn_2d = pygame.Rect(cx - btn_w - gap // 2, cy + 30, btn_w, btn_h)
+            btn_3d = pygame.Rect(cx + gap // 2, cy + 30, btn_w, btn_h)
+            toggle = pygame.Rect(30, self.height - 60, 130, 38)
+
+            hover_2d = btn_2d.collidepoint(mx, my)
+            hover_3d = btn_3d.collidepoint(mx, my)
+            hover_toggle = toggle.collidepoint(mx, my)
+
+            self.ui_renderer.draw_button_2d(btn_2d.x, btn_2d.y, btn_2d.w, btn_2d.h,
+                                            "2D Režim", is_dark=self.background_dark,
+                                            hover=hover_2d, primary=True)
+            self.ui_renderer.draw_button_2d(btn_3d.x, btn_3d.y, btn_3d.w, btn_3d.h,
+                                            "3D Režim", is_dark=self.background_dark,
+                                            hover=hover_3d, primary=True)
+
+            theme_label = "Tmavý režim" if self.background_dark else "Svetlý režim"
+            self.ui_renderer.draw_button_2d(toggle.x, toggle.y, toggle.w, toggle.h,
+                                            theme_label, is_dark=self.background_dark,
+                                            hover=hover_toggle)
+
+            # Verzia
+            self.ui_renderer.draw_text_2d("v2.0", (self.width - 50, self.height - 30), sub_col, 12)
 
             pygame.display.flip()
 
     # V triede Application - upravená metóda run_baza_input()
     def run_baza_input(self):
-        """Spustí obrazovku pre zadanie bázy - S TLAČIDLOM PRE ŠTANDARDNÚ BÁZU"""
+        """Spustí obrazovku pre zadanie bázy - OPRAVENÁ VERZIA so zosynchronizovanými súradnicami"""
         pending_input_panel = None
-        button_w, button_h = 200, 60
 
         while self.is_not_baza and self.running:
             dt = self.clock.tick(Config.FPS) / 1000.0
@@ -3272,6 +3716,63 @@ class Application:
 
             mx, my = pygame.mouse.get_pos()
 
+            # =================================================================
+            # DEFINUJ VŠETKY RECT-y TU - PRED EVENT HANDLING AJ RENDEROVANÍM
+            # =================================================================
+
+            # Späť tlačidlo
+            back_rect = pygame.Rect(20, 15, 90, 36)
+
+            # Theme toggle (responzívne - od dolného okraja)
+            toggle_rect = pygame.Rect(30, self.height - 55, 130, 38)
+
+            # Pravý panel - báza (responzívne - od pravého okraja)
+            basis_x = self.width - 210
+            basis_y = 70
+            std_basis_rect = pygame.Rect(basis_x, basis_y, 190, 44)
+
+            # Karty
+            card_x, card_y = 25, 70
+            card_w, card_h = 200, 290
+            card2_x = card_x + card_w + 20
+
+            # Tlačidlá v kartách
+            btn_w = card_w - 30
+            btn_h = 42
+            btn_gap = 8
+            btn_y_start = card_y + 45
+
+            # Vektorové operácie rect-y
+            vec_op_names = ["Sčítania", "Odčitanie", "Násobenie Konštantou", "Lineárna kombinácia"]
+            vec_op_rects = []
+            for i in range(4):
+                rect = pygame.Rect(card_x + 15, btn_y_start + i * (btn_h + btn_gap), btn_w, btn_h)
+                vec_op_rects.append(rect)
+
+            # Maticové operácie rect-y
+            mat_op_rects = []
+            for i in range(4):
+                rect = pygame.Rect(card2_x + 15, btn_y_start + i * (btn_h + btn_gap), btn_w, btn_h)
+                mat_op_rects.append(rect)
+
+            # Matrix input cells pre vlastnú bázu
+            matrix_x = basis_x + 25
+            matrix_y = basis_y + 125
+            cell_w, cell_h = 45, 34
+            cell_gap = 5
+
+            matrix_cell_rects = []
+            for r in range(rows):
+                row_rects = []
+                for c in range(cols):
+                    rect = pygame.Rect(matrix_x + c * (cell_w + cell_gap),
+                                       matrix_y + r * (cell_h + cell_gap), cell_w, cell_h)
+                    row_rects.append(rect)
+                matrix_cell_rects.append(row_rects)
+
+            # =================================================================
+            # EVENT HANDLING
+            # =================================================================
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     self.running = False
@@ -3285,9 +3786,8 @@ class Application:
                     glViewport(0, 0, self.width, self.height)
 
                 elif event.type == pygame.MOUSEBUTTONDOWN:
-                    # === NOVÉ: Tlačidlo späť do menu ===
-                    back_button_rect = pygame.Rect(20, 10, 120, 40)
-                    if back_button_rect.collidepoint(mx, my):
+                    # === Späť ===
+                    if back_rect.collidepoint(mx, my):
                         self.startup_screen = True
                         self.is_not_baza = True
                         pending_input_panel = None
@@ -3295,16 +3795,13 @@ class Application:
                         self.run_startup_screen()
                         if not self.running:
                             return
-                        # Po návrate z menu aktualizuj rozmery
                         rows = 2 if self.view_2d_mode else 3
                         cols = 2 if self.view_2d_mode else 3
                         self.matrix_inputs = [["" for _ in range(cols)] for _ in range(rows)]
                         continue
 
-                    # === NOVÉ: Tlačidlo pre štandardnú bázu ===
-                    standard_basis_rect = pygame.Rect(self.width - 180, 70, 160, 40)
-                    if standard_basis_rect.collidepoint(mx, my):
-                        # Vytvor identitná maticu ako bázu
+                    # === Štandardná báza ===
+                    if std_basis_rect.collidepoint(mx, my):
                         if self.view_2d_mode:
                             self.saved_baza.append(((1, 0), (0, 1)))
                         else:
@@ -3313,20 +3810,14 @@ class Application:
                         self.is_not_baza = False
                         continue
 
-                    toggle_bg_rect = pygame.Rect(20, self.height - 50, 120, 35)
-                    if toggle_bg_rect.collidepoint(mx, my):
+                    # === Theme toggle ===
+                    if toggle_rect.collidepoint(mx, my):
                         self.background_dark = not self.background_dark
 
-                    # --- VEKTOROVÉ OPERÁCIE TLAČIDLÁ ---
-                    vop_buttons = [
-                        ("Sčítania", pygame.Rect(35, 60, button_w, button_h)),
-                        ("Odčitanie", pygame.Rect(35, 60 + button_h + 5, button_w, button_h)),
-                        ("Násobenie Konštantou", pygame.Rect(35, 60 + button_h * 2 + 10, button_w, button_h)),
-                        ("Lineárna kombinácia", pygame.Rect(35, 60 + button_h * 3 + 15, button_w, button_h))
-                    ]
-
-                    for name, rect in vop_buttons:
+                    # === VEKTOROVÉ OPERÁCIE ===
+                    for i, rect in enumerate(vec_op_rects):
                         if rect.collidepoint(mx, my):
+                            name = vec_op_names[i]
                             rows_panel = 2 if self.view_2d_mode else 3
 
                             if name in ["Sčítania", "Odčitanie"]:
@@ -3337,175 +3828,6 @@ class Application:
                                 symbol = "×"
                                 num_panels = 1
                                 has_constant = True
-                            elif name == "Lineárna kombinácia":
-                                symbol = None
-                                num_panels = 4  # c1, v1, c2, v2
-                                has_constant = False
-
-                                # Špeciálne rozloženie: konštanta - vektor - konštanta - vektor
-                                constant_width = 60
-                                vector_panel_width = Config.MATRIX_CELL_W + Config.MATRIX_GAP
-                                symbol_width = 30
-
-                                total_width = (constant_width + vector_panel_width + symbol_width) * 2
-                                start_x = self.width // 2 - total_width // 2
-
-                                panels = []
-                                current_x = start_x
-
-                                # c1
-                                panels.append({
-                                    "type": "constant",
-                                    "rows": 1,
-                                    "cols": 1,
-                                    "values": [[""]],
-                                    "active_cell": (0, 0),
-                                    "x": current_x,
-                                    "y": self.height // 2 - Config.MATRIX_CELL_H // 2,
-                                    "label": "c1"
-                                })
-                                current_x += constant_width
-
-                                # Symbol ×
-                                current_x += 10
-
-                                # v1
-                                panels.append({
-                                    "type": "vector",
-                                    "rows": rows_panel,
-                                    "cols": 1,
-                                    "values": [["" for _ in range(1)] for _ in range(rows_panel)],
-                                    "active_cell": (-1, -1),
-                                    "x": current_x,
-                                    "y": self.height // 2 - (
-                                            rows_panel * (Config.MATRIX_CELL_H + Config.MATRIX_GAP)) // 2,
-                                    "label": "v1"
-                                })
-                                current_x += vector_panel_width + 20
-
-                                # Symbol +
-                                current_x += 10
-
-                                # c2
-                                panels.append({
-                                    "type": "constant",
-                                    "rows": 1,
-                                    "cols": 1,
-                                    "values": [[""]],
-                                    "active_cell": (-1, -1),
-                                    "x": current_x,
-                                    "y": self.height // 2 - Config.MATRIX_CELL_H // 2,
-                                    "label": "c2"
-                                })
-                                current_x += constant_width
-
-                                # Symbol ×
-                                current_x += 10
-
-                                # v2
-                                panels.append({
-                                    "type": "vector",
-                                    "rows": rows_panel,
-                                    "cols": 1,
-                                    "values": [["" for _ in range(1)] for _ in range(rows_panel)],
-                                    "active_cell": (-1, -1),
-                                    "x": current_x,
-                                    "y": self.height // 2 - (
-                                            rows_panel * (Config.MATRIX_CELL_H + Config.MATRIX_GAP)) // 2,
-                                    "label": "v2"
-                                })
-
-                                pending_input_panel = {
-                                    "type": "vector",
-                                    "operation": name,
-                                    "symbol": None,
-                                    "num_panels": len(panels),
-                                    "has_constant": False,
-                                    "panels": panels,
-                                    "active_panel": 0,
-                                    "is_linear_combination": True
-                                }
-
-                                break
-
-                            else:
-                                symbol = None
-                                num_panels = 1
-                                has_constant = False
-
-                            panel_width = Config.MATRIX_CELL_W + Config.MATRIX_GAP
-                            constant_width = 60 if has_constant else 0
-                            symbol_width = 40 if (symbol and not has_constant) else (30 if has_constant else 0)
-                            total_width = num_panels * panel_width + symbol_width + constant_width
-                            start_x = self.width // 2 - total_width // 2
-
-                            panels = []
-                            if has_constant:
-                                panels.append({
-                                    "type": "constant",
-                                    "rows": 1,
-                                    "cols": 1,
-                                    "values": [[""]],
-                                    "active_cell": (0, 0),
-                                    "x": start_x,
-                                    "y": self.height // 2 - Config.MATRIX_CELL_H // 2
-                                })
-                                panels.append({
-                                    "type": "vector",
-                                    "rows": rows_panel,
-                                    "cols": 1,
-                                    "values": [["" for _ in range(1)] for _ in range(rows_panel)],
-                                    "active_cell": (-1, -1),
-                                    "x": start_x + constant_width + symbol_width,
-                                    "y": self.height // 2 - (
-                                            rows_panel * (Config.MATRIX_CELL_H + Config.MATRIX_GAP)) // 2
-                                })
-                            else:
-                                for i in range(num_panels):
-                                    panels.append({
-                                        "type": "vector",
-                                        "rows": rows_panel,
-                                        "cols": 1,
-                                        "values": [["" for _ in range(1)] for _ in range(rows_panel)],
-                                        "active_cell": (0, 0) if i == 0 else (-1, -1),
-                                        "x": start_x + i * (panel_width + symbol_width),
-                                        "y": self.height // 2 - (
-                                                rows_panel * (Config.MATRIX_CELL_H + Config.MATRIX_GAP)) // 2
-                                    })
-
-                            pending_input_panel = {
-                                "type": "vector",
-                                "operation": name,
-                                "symbol": symbol,
-                                "num_panels": len(panels),
-                                "has_constant": has_constant,
-                                "panels": panels,
-                                "active_panel": 0
-                            }
-                            break
-
-                    # --- MATICOVÉ OPERÁCIE TLAČIDLÁ ---
-                    mop_buttons = [
-                        ("Sčítania", pygame.Rect(35, 380, button_w, button_h)),
-                        ("Odčitanie", pygame.Rect(35, 380 + button_h + 5, button_w, button_h)),
-                        ("Násobenie Konštantou", pygame.Rect(35, 380 + button_h * 2 + 10, button_w, button_h)),
-                        ("Lineárna kombinácia", pygame.Rect(35, 380 + button_h * 3 + 15, button_w, button_h))
-                    ]
-
-                    for name, rect in mop_buttons:
-                        if rect.collidepoint(mx, my):
-                            rows_panel = cols_panel = 2 if self.view_2d_mode else 3
-
-                            if name in ["Sčítania", "Odčitanie"]:
-                                symbol = "+" if name == "Sčítania" else "-"
-                                num_panels = 2
-                                has_constant = False
-                            elif name == "Násobenie Konštantou":
-                                symbol = "×"
-                                num_panels = 1
-                                has_constant = True
-
-
                             elif name == "Lineárna kombinácia":
                                 symbol = None
                                 num_panels = 4
@@ -3522,127 +3844,219 @@ class Application:
                                 current_x = start_x
 
                                 panels.append({
-                                    "type": "constant",
-                                    "rows": 1,
-                                    "cols": 1,
-                                    "values": [[""]],
-                                    "active_cell": (0, 0),
+                                    "type": "constant", "rows": 1, "cols": 1,
+                                    "values": [[""]], "active_cell": (0, 0),
                                     "x": current_x,
                                     "y": self.height // 2 - Config.MATRIX_CELL_H // 2,
                                     "label": "c1"
                                 })
-                                current_x += constant_width
-                                current_x += 10
+                                current_x += constant_width + 10
 
                                 panels.append({
-                                    "type": "matrix",
-                                    "rows": rows_panel,
-                                    "cols": cols_panel,
-                                    "values": [["" for _ in range(cols_panel)] for _ in range(rows_panel)],
+                                    "type": "vector", "rows": rows_panel, "cols": 1,
+                                    "values": [["" for _ in range(1)] for _ in range(rows_panel)],
                                     "active_cell": (-1, -1),
                                     "x": current_x,
                                     "y": self.height // 2 - (
-                                            rows_panel * (Config.MATRIX_CELL_H + Config.MATRIX_GAP)) // 2,
-                                    "label": "mat1"
+                                                rows_panel * (Config.MATRIX_CELL_H + Config.MATRIX_GAP)) // 2,
+                                    "label": "v1"
                                 })
-                                current_x += vector_panel_width + 20
-                                current_x += 10
+                                current_x += vector_panel_width + 30
 
                                 panels.append({
-                                    "type": "constant",
-                                    "rows": 1,
-                                    "cols": 1,
-                                    "values": [[""]],
-                                    "active_cell": (-1, -1),
+                                    "type": "constant", "rows": 1, "cols": 1,
+                                    "values": [[""]], "active_cell": (-1, -1),
                                     "x": current_x,
                                     "y": self.height // 2 - Config.MATRIX_CELL_H // 2,
                                     "label": "c2"
                                 })
-                                current_x += constant_width
-                                current_x += 10
+                                current_x += constant_width + 10
 
                                 panels.append({
-                                    "type": "matrix",
-                                    "rows": rows_panel,
-                                    "cols": cols_panel,
-                                    "values": [["" for _ in range(cols_panel)] for _ in range(rows_panel)],
+                                    "type": "vector", "rows": rows_panel, "cols": 1,
+                                    "values": [["" for _ in range(1)] for _ in range(rows_panel)],
                                     "active_cell": (-1, -1),
                                     "x": current_x,
                                     "y": self.height // 2 - (
-                                            rows_panel * (Config.MATRIX_CELL_H + Config.MATRIX_GAP)) // 2,
-                                    "label": "mat2"
+                                                rows_panel * (Config.MATRIX_CELL_H + Config.MATRIX_GAP)) // 2,
+                                    "label": "v2"
                                 })
 
                                 pending_input_panel = {
-                                    "type": "matrix",
-                                    "operation": name,
-                                    "symbol": None,
-                                    "num_panels": len(panels),
-                                    "has_constant": False,
-                                    "panels": panels,
-                                    "active_panel": 0,
+                                    "type": "vector", "operation": name, "symbol": None,
+                                    "num_panels": len(panels), "has_constant": False,
+                                    "panels": panels, "active_panel": 0,
                                     "is_linear_combination": True
                                 }
-
                                 break
-
                             else:
                                 symbol = None
                                 num_panels = 1
                                 has_constant = False
 
-                            panel_width = cols_panel * (Config.MATRIX_CELL_W + Config.MATRIX_GAP)
-                            constant_width = 60 if has_constant else 0
-                            symbol_width = 40 if (symbol and not has_constant) else (30 if has_constant else 0)
-                            total_width = num_panels * panel_width + symbol_width + constant_width
-                            start_x = self.width // 2 - total_width // 2
+                            if name != "Lineárna kombinácia":
+                                panel_width = Config.MATRIX_CELL_W + Config.MATRIX_GAP
+                                constant_width = 60 if has_constant else 0
+                                symbol_width = 40 if (symbol and not has_constant) else (30 if has_constant else 0)
+                                total_width = num_panels * panel_width + symbol_width + constant_width
+                                start_x = self.width // 2 - total_width // 2
 
-                            panels = []
-                            if has_constant:
-                                panels.append({
-                                    "type": "constant",
-                                    "rows": 1,
-                                    "cols": 1,
-                                    "values": [[""]],
-                                    "active_cell": (0, 0),
-                                    "x": start_x,
-                                    "y": self.height // 2 - Config.MATRIX_CELL_H // 2
-                                })
-                                panels.append({
-                                    "type": "matrix",
-                                    "rows": rows_panel,
-                                    "cols": cols_panel,
-                                    "values": [["" for _ in range(cols_panel)] for _ in range(rows_panel)],
-                                    "active_cell": (-1, -1),
-                                    "x": start_x + constant_width + symbol_width,
-                                    "y": self.height // 2 - (
-                                            rows_panel * (Config.MATRIX_CELL_H + Config.MATRIX_GAP)) // 2
-                                })
-                            else:
-                                for i in range(num_panels):
+                                panels = []
+                                if has_constant:
                                     panels.append({
-                                        "type": "matrix",
-                                        "rows": rows_panel,
-                                        "cols": cols_panel,
-                                        "values": [["" for _ in range(cols_panel)] for _ in range(rows_panel)],
-                                        "active_cell": (0, 0) if i == 0 else (-1, -1),
-                                        "x": start_x + i * (panel_width + symbol_width),
-                                        "y": self.height // 2 - (
-                                                rows_panel * (Config.MATRIX_CELL_H + Config.MATRIX_GAP)) // 2
+                                        "type": "constant", "rows": 1, "cols": 1,
+                                        "values": [[""]], "active_cell": (0, 0),
+                                        "x": start_x,
+                                        "y": self.height // 2 - Config.MATRIX_CELL_H // 2
                                     })
+                                    panels.append({
+                                        "type": "vector", "rows": rows_panel, "cols": 1,
+                                        "values": [["" for _ in range(1)] for _ in range(rows_panel)],
+                                        "active_cell": (-1, -1),
+                                        "x": start_x + constant_width + symbol_width,
+                                        "y": self.height // 2 - (
+                                                    rows_panel * (Config.MATRIX_CELL_H + Config.MATRIX_GAP)) // 2
+                                    })
+                                else:
+                                    for j in range(num_panels):
+                                        panels.append({
+                                            "type": "vector", "rows": rows_panel, "cols": 1,
+                                            "values": [["" for _ in range(1)] for _ in range(rows_panel)],
+                                            "active_cell": (0, 0) if j == 0 else (-1, -1),
+                                            "x": start_x + j * (panel_width + symbol_width),
+                                            "y": self.height // 2 - (
+                                                        rows_panel * (Config.MATRIX_CELL_H + Config.MATRIX_GAP)) // 2
+                                        })
 
-                            pending_input_panel = {
-                                "type": "matrix",
-                                "operation": name,
-                                "symbol": symbol,
-                                "num_panels": len(panels),
-                                "has_constant": has_constant,
-                                "panels": panels,
-                                "active_panel": 0
-                            }
+                                pending_input_panel = {
+                                    "type": "vector", "operation": name, "symbol": symbol,
+                                    "num_panels": len(panels), "has_constant": has_constant,
+                                    "panels": panels, "active_panel": 0
+                                }
                             break
 
-                    # --- Kliknutie na input panel ---
+                    # === MATICOVÉ OPERÁCIE ===
+                    for i, rect in enumerate(mat_op_rects):
+                        if rect.collidepoint(mx, my):
+                            name = vec_op_names[i]
+                            rows_panel = cols_panel = 2 if self.view_2d_mode else 3
+
+                            if name in ["Sčítania", "Odčitanie"]:
+                                symbol = "+" if name == "Sčítania" else "-"
+                                num_panels = 2
+                                has_constant = False
+                            elif name == "Násobenie Konštantou":
+                                symbol = "×"
+                                num_panels = 1
+                                has_constant = True
+                            elif name == "Lineárna kombinácia":
+                                symbol = None
+                                num_panels = 4
+                                has_constant = False
+
+                                constant_width = 60
+                                matrix_panel_width = cols_panel * (Config.MATRIX_CELL_W + Config.MATRIX_GAP)
+                                symbol_width = 30
+
+                                total_width = (constant_width + matrix_panel_width + symbol_width) * 2
+                                start_x = self.width // 2 - total_width // 2
+
+                                panels = []
+                                current_x = start_x
+
+                                panels.append({
+                                    "type": "constant", "rows": 1, "cols": 1,
+                                    "values": [[""]], "active_cell": (0, 0),
+                                    "x": current_x,
+                                    "y": self.height // 2 - Config.MATRIX_CELL_H // 2,
+                                    "label": "c1"
+                                })
+                                current_x += constant_width + 10
+
+                                panels.append({
+                                    "type": "matrix", "rows": rows_panel, "cols": cols_panel,
+                                    "values": [["" for _ in range(cols_panel)] for _ in range(rows_panel)],
+                                    "active_cell": (-1, -1),
+                                    "x": current_x,
+                                    "y": self.height // 2 - (
+                                                rows_panel * (Config.MATRIX_CELL_H + Config.MATRIX_GAP)) // 2,
+                                    "label": "mat1"
+                                })
+                                current_x += matrix_panel_width + 30
+
+                                panels.append({
+                                    "type": "constant", "rows": 1, "cols": 1,
+                                    "values": [[""]], "active_cell": (-1, -1),
+                                    "x": current_x,
+                                    "y": self.height // 2 - Config.MATRIX_CELL_H // 2,
+                                    "label": "c2"
+                                })
+                                current_x += constant_width + 10
+
+                                panels.append({
+                                    "type": "matrix", "rows": rows_panel, "cols": cols_panel,
+                                    "values": [["" for _ in range(cols_panel)] for _ in range(rows_panel)],
+                                    "active_cell": (-1, -1),
+                                    "x": current_x,
+                                    "y": self.height // 2 - (
+                                                rows_panel * (Config.MATRIX_CELL_H + Config.MATRIX_GAP)) // 2,
+                                    "label": "mat2"
+                                })
+
+                                pending_input_panel = {
+                                    "type": "matrix", "operation": name, "symbol": None,
+                                    "num_panels": len(panels), "has_constant": False,
+                                    "panels": panels, "active_panel": 0,
+                                    "is_linear_combination": True
+                                }
+                                break
+                            else:
+                                symbol = None
+                                num_panels = 1
+                                has_constant = False
+
+                            if name != "Lineárna kombinácia":
+                                panel_width = cols_panel * (Config.MATRIX_CELL_W + Config.MATRIX_GAP)
+                                constant_width = 60 if has_constant else 0
+                                symbol_width = 40 if (symbol and not has_constant) else (30 if has_constant else 0)
+                                total_width = num_panels * panel_width + symbol_width + constant_width
+                                start_x = self.width // 2 - total_width // 2
+
+                                panels = []
+                                if has_constant:
+                                    panels.append({
+                                        "type": "constant", "rows": 1, "cols": 1,
+                                        "values": [[""]], "active_cell": (0, 0),
+                                        "x": start_x,
+                                        "y": self.height // 2 - Config.MATRIX_CELL_H // 2
+                                    })
+                                    panels.append({
+                                        "type": "matrix", "rows": rows_panel, "cols": cols_panel,
+                                        "values": [["" for _ in range(cols_panel)] for _ in range(rows_panel)],
+                                        "active_cell": (-1, -1),
+                                        "x": start_x + constant_width + symbol_width,
+                                        "y": self.height // 2 - (
+                                                    rows_panel * (Config.MATRIX_CELL_H + Config.MATRIX_GAP)) // 2
+                                    })
+                                else:
+                                    for j in range(num_panels):
+                                        panels.append({
+                                            "type": "matrix", "rows": rows_panel, "cols": cols_panel,
+                                            "values": [["" for _ in range(cols_panel)] for _ in range(rows_panel)],
+                                            "active_cell": (0, 0) if j == 0 else (-1, -1),
+                                            "x": start_x + j * (panel_width + symbol_width),
+                                            "y": self.height // 2 - (
+                                                        rows_panel * (Config.MATRIX_CELL_H + Config.MATRIX_GAP)) // 2
+                                        })
+
+                                pending_input_panel = {
+                                    "type": "matrix", "operation": name, "symbol": symbol,
+                                    "num_panels": len(panels), "has_constant": has_constant,
+                                    "panels": panels, "active_panel": 0
+                                }
+                            break
+
+                    # === Kliknutie na input panel ===
                     if pending_input_panel:
                         clicked_panel = False
                         for panel_idx, panel in enumerate(pending_input_panel["panels"]):
@@ -3677,27 +4091,20 @@ class Application:
                             if clicked_panel:
                                 break
 
-                    # Check matrix cell clicks (original báza input)
+                    # === Matrix cells pre vlastnú bázu ===
                     if not pending_input_panel:
-                        matrix_start_x = self.width - 155
-                        matrix_start_y = 170
                         for r in range(rows):
                             for c in range(cols):
-                                x = matrix_start_x + c * (Config.MATRIX_CELL_W + Config.MATRIX_GAP)
-                                y = matrix_start_y + r * (Config.MATRIX_CELL_H + Config.MATRIX_GAP)
-                                rect = pygame.Rect(x, y, Config.MATRIX_CELL_W, Config.MATRIX_CELL_H)
-                                if rect.collidepoint(mx, my):
+                                if matrix_cell_rects[r][c].collidepoint(mx, my):
                                     self.matrix_active_cell = (r, c)
                                     break
 
                 elif event.type == pygame.KEYDOWN:
-                    # === NOVÉ: ESC pre návrat do menu ===
+                    # === ESC ===
                     if event.key == pygame.K_ESCAPE:
                         if pending_input_panel:
-                            # Ak je otvorený panel, zatvor ho
                             pending_input_panel = None
                         else:
-                            # Inak sa vráť do menu
                             self.startup_screen = True
                             self.is_not_baza = True
                             self.matrix_inputs = [["" for _ in range(cols)] for _ in range(rows)]
@@ -3709,7 +4116,7 @@ class Application:
                             self.matrix_inputs = [["" for _ in range(cols)] for _ in range(rows)]
                         continue
 
-                    # --- Spracovanie pending panel inputu ---
+                    # === Pending panel input ===
                     pending_handled = False
                     if pending_input_panel:
                         active_panel_idx = pending_input_panel["active_panel"]
@@ -3719,7 +4126,6 @@ class Application:
                         if r != -1 and c != -1:
                             pending_handled = True
                             if event.key == pygame.K_RETURN:
-                                # Skontroluj či sú všetky polia vyplnené
                                 all_filled = True
                                 for p in pending_input_panel["panels"]:
                                     for row in p["values"]:
@@ -3729,7 +4135,6 @@ class Application:
                                                 break
 
                                 if all_filled:
-                                    # Extrahuj konštantu ak existuje
                                     constant = None
                                     data_panels = []
                                     for p in pending_input_panel["panels"]:
@@ -3744,34 +4149,28 @@ class Application:
                                     result = None
                                     operands = []
 
-                                    # VEKTOROVÉ OPERÁCIE
                                     if pending_input_panel["type"] == "vector":
                                         if operation == "Sčítania":
                                             vec1 = [float(v[0]) for v in data_panels[0]["values"]]
                                             vec2 = [float(v[0]) for v in data_panels[1]["values"]]
                                             result = [a + b for a, b in zip(vec1, vec2)]
                                             operands = [vec1, vec2]
-                                            self.vector_manager.animation_controller.setup_operation(
-                                                'add', operands, result
-                                            )
-
+                                            self.vector_manager.animation_controller.setup_operation('add', operands,
+                                                                                                     result)
                                         elif operation == "Odčitanie":
                                             vec1 = [float(v[0]) for v in data_panels[0]["values"]]
                                             vec2 = [float(v[0]) for v in data_panels[1]["values"]]
                                             result = [a - b for a, b in zip(vec1, vec2)]
                                             operands = [vec1, vec2]
-                                            self.vector_manager.animation_controller.setup_operation(
-                                                'subtract', operands, result
-                                            )
-
+                                            self.vector_manager.animation_controller.setup_operation('subtract',
+                                                                                                     operands, result)
                                         elif operation == "Násobenie Konštantou":
                                             vec = [float(v[0]) for v in data_panels[0]["values"]]
                                             result = [constant[0] * v for v in vec]
                                             operands = [vec]
-                                            self.vector_manager.animation_controller.setup_operation(
-                                                'scalar_mult', operands, result, constant[0]
-                                            )
-
+                                            self.vector_manager.animation_controller.setup_operation('scalar_mult',
+                                                                                                     operands, result,
+                                                                                                     constant[0])
                                         elif operation == "Lineárna kombinácia":
                                             vec1 = [float(v[0]) for v in data_panels[0]["values"]]
                                             vec2 = [float(v[0]) for v in data_panels[1]["values"]]
@@ -3779,10 +4178,7 @@ class Application:
                                             result = [c1 * v1 + c2 * v2 for v1, v2 in zip(vec1, vec2)]
                                             operands = [vec1, vec2]
                                             self.vector_manager.animation_controller.setup_operation(
-                                                'linear_combination', operands, result, [c1, c2]
-                                            )
-
-                                    # MATICOVÉ OPERÁCIE
+                                                'linear_combination', operands, result, [c1, c2])
                                     else:
                                         if operation == "Sčítania":
                                             mat1 = [[float(v) for v in row] for row in data_panels[0]["values"]]
@@ -3790,28 +4186,23 @@ class Application:
                                             result = [[a + b for a, b in zip(row1, row2)] for row1, row2 in
                                                       zip(mat1, mat2)]
                                             operands = [mat1, mat2]
-                                            self.vector_manager.animation_controller.setup_operation(
-                                                'add', operands, result
-                                            )
-
+                                            self.vector_manager.animation_controller.setup_operation('add', operands,
+                                                                                                     result)
                                         elif operation == "Odčitanie":
                                             mat1 = [[float(v) for v in row] for row in data_panels[0]["values"]]
                                             mat2 = [[float(v) for v in row] for row in data_panels[1]["values"]]
                                             result = [[a - b for a, b in zip(row1, row2)] for row1, row2 in
                                                       zip(mat1, mat2)]
                                             operands = [mat1, mat2]
-                                            self.vector_manager.animation_controller.setup_operation(
-                                                'subtract', operands, result
-                                            )
-
+                                            self.vector_manager.animation_controller.setup_operation('subtract',
+                                                                                                     operands, result)
                                         elif operation == "Násobenie Konštantou":
                                             mat = [[float(v) for v in row] for row in data_panels[0]["values"]]
                                             result = [[constant[0] * v for v in row] for row in mat]
                                             operands = [mat]
-                                            self.vector_manager.animation_controller.setup_operation(
-                                                'scalar_mult', operands, result, constant[0]
-                                            )
-
+                                            self.vector_manager.animation_controller.setup_operation('scalar_mult',
+                                                                                                     operands, result,
+                                                                                                     constant[0])
                                         elif operation == "Lineárna kombinácia":
                                             mat1 = [[float(v) for v in row] for row in data_panels[0]["values"]]
                                             mat2 = [[float(v) for v in row] for row in data_panels[1]["values"]]
@@ -3820,16 +4211,13 @@ class Application:
                                                       in zip(mat1, mat2)]
                                             operands = [mat1, mat2]
                                             self.vector_manager.animation_controller.setup_operation(
-                                                'linear_combination', operands, result, [c1, c2]
-                                            )
+                                                'linear_combination', operands, result, [c1, c2])
 
-                                    # IHNEĎ PO NASTAVENÍ OPERÁCIE PRESUŇ KAMERU
                                     if not self.view_2d_mode:
                                         plane = self.vector_manager.animation_controller.current_plane
                                         if plane:
                                             max_val = self.get_max_from_vectors()
-                                            distance = max(15.0, max_val * 3.5)
-
+                                            distance = max(25.0, max_val * 3.0 + 5)
                                             if plane == "3D":
                                                 optimal_view = self.vector_manager.animation_controller.compute_optimal_view_for_3d()
                                                 if optimal_view:
@@ -3846,7 +4234,7 @@ class Application:
                             elif event.unicode.isdigit() or event.unicode in ".-":
                                 panel["values"][r][c] += event.unicode
 
-                    # --- Spracovanie originálnej bázy ---
+                    # === Originálna báza input ===
                     if not pending_handled and self.matrix_active_cell != (-1, -1):
                         r, c = self.matrix_active_cell
                         if event.key == pygame.K_RETURN:
@@ -3881,104 +4269,82 @@ class Application:
                         elif event.unicode.isdigit() or event.unicode in ".-":
                             self.matrix_inputs[r][c] += event.unicode
 
-            # === RENDER ===
+            # =================================================================
+            # RENDER
+            # =================================================================
+            if self.background_dark:
+                glClearColor(*Colors.DARK_BG, 1.0)
+            else:
+                glClearColor(*Colors.LIGHT_BG, 1.0)
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+
             glMatrixMode(GL_PROJECTION)
             glLoadIdentity()
             glOrtho(0, self.width, self.height, 0, -1, 1)
             glMatrixMode(GL_MODELVIEW)
             glLoadIdentity()
 
-            if self.background_dark:
-                glClearColor(0.0, 0.0, 0.0, 1.0)
-            else:
-                glClearColor(1.0, 1.0, 1.0, 1.0)
+            text_col = Colors.TEXT_DARK if self.background_dark else Colors.TEXT_LIGHT
+            sub_col = Colors.TEXT_DARK_SEC if self.background_dark else Colors.TEXT_LIGHT_SEC
 
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+            # === SPÄŤ ===
+            hover_back = back_rect.collidepoint(mx, my)
+            self.ui_renderer.draw_button_2d(back_rect.x, back_rect.y, back_rect.w, back_rect.h,
+                                            "← Späť", is_dark=self.background_dark, hover=hover_back)
+            self.ui_renderer.draw_text_2d("ESC", (120, 25), sub_col, 12)
 
-            # === NOVÉ: Tlačidlo späť do menu ===
-            back_button_rect = pygame.Rect(20, 10, 120, 40)
-            self.ui_renderer.draw_button_2d(back_button_rect.x, back_button_rect.y,
-                                            back_button_rect.width, back_button_rect.height,
-                                            "← Menu", active=True)
+            # === TITULOK ===
+            mode_str = "2D" if self.view_2d_mode else "3D"
+            self.ui_renderer.draw_text_2d(f"Operácie ({mode_str})", (self.width // 2 - 60, 20), text_col, 22)
 
-            # === NOVÉ: Tlačidlo pre štandardnú bázu ===
-            standard_basis_rect = pygame.Rect(self.width - 180, 70, 160, 40)
-            self.ui_renderer.draw_button_2d(standard_basis_rect.x, standard_basis_rect.y,
-                                            standard_basis_rect.width, standard_basis_rect.height,
-                                            "Štandardná báza", active=True)
+            # === VEKTOROVÉ OPERÁCIE ===
+            self.ui_renderer.draw_card(card_x, card_y, card_w, card_h, self.background_dark, "Vektorové operácie")
+            vec_labels = ["Sčítanie", "Odčítanie", "Násobenie k.", "Lin. kombinácia"]
+            for i, rect in enumerate(vec_op_rects):
+                hover = rect.collidepoint(mx, my)
+                self.ui_renderer.draw_button_2d(rect.x, rect.y, rect.w, rect.h,
+                                                vec_labels[i], is_dark=self.background_dark, hover=hover)
 
-            # Popis pre štandardnú bázu
-            color1 = (1, 1, 1) if self.background_dark else (0, 0, 0)
-            basis_text = "I₂ (2×2)" if self.view_2d_mode else "I₃ (3×3)"
-            self.ui_renderer.draw_text_2d(f"= {basis_text}", (self.width - 180, 115),
-                                          color=color1, font_size=16)
+            # === MATICOVÉ OPERÁCIE ===
+            self.ui_renderer.draw_card(card2_x, card_y, card_w, card_h, self.background_dark, "Maticové operácie")
+            for i, rect in enumerate(mat_op_rects):
+                hover = rect.collidepoint(mx, my)
+                self.ui_renderer.draw_button_2d(rect.x, rect.y, rect.w, rect.h,
+                                                vec_labels[i], is_dark=self.background_dark, hover=hover)
 
-            # Draw matrix input boxes (original báza)
-            matrix_start_x = self.width - 155
-            matrix_start_y = 170
+            # === ŠTANDARDNÁ BÁZA ===
+            hover_std = std_basis_rect.collidepoint(mx, my)
+            self.ui_renderer.draw_button_2d(std_basis_rect.x, std_basis_rect.y,
+                                            std_basis_rect.w, std_basis_rect.h,
+                                            "Štandardná báza", is_dark=self.background_dark,
+                                            hover=hover_std, primary=True)
+            basis_desc = "Identitná matica I₂" if self.view_2d_mode else "Identitná matica I₃"
+            self.ui_renderer.draw_text_2d(basis_desc, (basis_x + 30, basis_y + 52), sub_col, 13)
+
+            # === VLASTNÁ BÁZA ===
+            self.ui_renderer.draw_card(basis_x, basis_y + 80, 190, 180, self.background_dark, "Vlastná báza")
             for r in range(rows):
                 for c in range(cols):
-                    x = matrix_start_x + c * (Config.MATRIX_CELL_W + Config.MATRIX_GAP)
-                    y = matrix_start_y + r * (Config.MATRIX_CELL_H + Config.MATRIX_GAP)
+                    rect = matrix_cell_rects[r][c]
                     active = (r, c) == self.matrix_active_cell
-                    col_color_outline = Config.COL_COLORS_OUTLINE[c] if c < len(Config.COL_COLORS_OUTLINE) else (0.7,
-                                                                                                                 0.7,
-                                                                                                                 0.7)
-                    self.ui_renderer.draw_input_box_3d(x, y, Config.MATRIX_CELL_W, Config.MATRIX_CELL_H,
+                    col_color = Config.COL_COLORS_OUTLINE[c] if c < len(Config.COL_COLORS_OUTLINE) else None
+                    self.ui_renderer.draw_input_box_3d(rect.x, rect.y, rect.w, rect.h,
                                                        self.matrix_inputs[r][c], active,
-                                                       fill_color=(0.7, 0.7, 0.7),
-                                                       fill_color_outline=col_color_outline)
+                                                       fill_color_outline=col_color,
+                                                       is_dark=self.background_dark)
 
-            # Popis nad maticou
-            self.ui_renderer.draw_text_2d("Vlastná báza:", (matrix_start_x - 10, matrix_start_y - 30),
-                                          color=color1, font_size=18)
+            # === THEME TOGGLE ===
+            hover_toggle = toggle_rect.collidepoint(mx, my)
+            theme_label = "Tmavý režim" if self.background_dark else "Svetlý režim"
+            self.ui_renderer.draw_button_2d(toggle_rect.x, toggle_rect.y, toggle_rect.w, toggle_rect.h,
+                                            theme_label, is_dark=self.background_dark, hover=hover_toggle)
 
-            # --- Draw TLAČIDLÁ ---
-            button_placement = pygame.Rect(35, 60, button_w, button_h)
-            self.ui_renderer.draw_text_2d("Vektorové operácie: ", (button_placement.x - 15, button_placement.y - 40),
-                                          color=color1, font_size=30)
-            self.ui_renderer.draw_button_2d(button_placement.x, button_placement.y, button_placement.w,
-                                            button_placement.h, "Sčítania", active=True)
-            self.ui_renderer.draw_button_2d(button_placement.x, button_placement.y + button_h + 5, button_placement.w,
-                                            button_placement.h, "Odčitanie", active=True)
-            self.ui_renderer.draw_button_2d(button_placement.x, button_placement.y + button_h * 2 + 10,
-                                            button_placement.w, button_placement.h, "Násobenie Konštantou", active=True)
-            self.ui_renderer.draw_button_2d(button_placement.x, button_placement.y + button_h * 3 + 15,
-                                            button_placement.w, button_placement.h, "Lineárna kombinácia", active=True)
-
-            button_placement = pygame.Rect(35, 380, button_w, button_h)
-            self.ui_renderer.draw_text_2d("Maticové operácie: ", (button_placement.x - 15, button_placement.y - 40),
-                                          color=color1, font_size=30)
-            self.ui_renderer.draw_button_2d(button_placement.x, button_placement.y, button_placement.w,
-                                            button_placement.h, "Sčítania", active=True)
-            self.ui_renderer.draw_button_2d(button_placement.x, button_placement.y + button_h + 5, button_placement.w,
-                                            button_placement.h, "Odčitanie", active=True)
-            self.ui_renderer.draw_button_2d(button_placement.x, button_placement.y + button_h * 2 + 10,
-                                            button_placement.w, button_placement.h, "Násobenie Konštantou", active=True)
-            self.ui_renderer.draw_button_2d(button_placement.x, button_placement.y + button_h * 3 + 15,
-                                            button_placement.w, button_placement.h, "Lineárna kombinácia", active=True)
-
-            # Draw toggle button
-            toggle_bg_rect = pygame.Rect(20, self.height - 50, 120, 35)
-            label = "Dark Mode" if self.background_dark else "Light Mode"
-            self.ui_renderer.draw_button_2d(toggle_bg_rect.x, toggle_bg_rect.y,
-                                            toggle_bg_rect.width, toggle_bg_rect.height,
-                                            label, active=True)
-
-            # === NOVÉ: Nápoveda pre ESC ===
-            self.ui_renderer.draw_text_2d("ESC = späť", (150, 20),
-                                          color=color1, font_size=14)
-
-            # --- Draw PENDING INPUT PANEL ---
-            # --- Draw PENDING INPUT PANEL ---
+            # === PENDING INPUT PANEL ===
             if pending_input_panel:
-                # Špeciálne vykreslenie pre lineárnu kombináciu
                 if pending_input_panel.get("is_linear_combination"):
                     color_symbol = (1, 1, 1) if self.background_dark else (0, 0, 0)
-
                     for panel_idx, panel in enumerate(pending_input_panel["panels"]):
                         is_active_panel = (panel_idx == pending_input_panel["active_panel"])
-
                         if panel.get("type") == "constant":
                             x = panel["x"]
                             y = panel["y"]
@@ -3987,8 +4353,7 @@ class Application:
                                                                panel["values"][0][0], active)
                             label = panel.get("label", "")
                             if label:
-                                self.ui_renderer.draw_text_2d(label, (x + 15, y - 25),
-                                                              color=color_symbol, font_size=18)
+                                self.ui_renderer.draw_text_2d(label, (x + 15, y - 25), color=color_symbol, font_size=18)
                         else:
                             for r in range(panel["rows"]):
                                 for c in range(panel["cols"]):
@@ -4000,41 +4365,33 @@ class Application:
                                                                        panel["values"][r][c], active)
                             label = panel.get("label", "")
                             if label:
-                                x = panel["x"]
-                                y = panel["y"] - 25
-                                self.ui_renderer.draw_text_2d(label, (x + 10, y),
+                                self.ui_renderer.draw_text_2d(label, (panel["x"] + 10, panel["y"] - 25),
                                                               color=color_symbol, font_size=18)
 
-                        # OPRAVENÉ symboly pre lineárnu kombináciu
                         if panel_idx == 0:
-                            # × za prvou konštantou
                             font_size_sym = 30
                             symbol_x = panel["x"] + 50 + 5
                             symbol_y = panel["y"] + Config.MATRIX_CELL_H // 2 - font_size_sym // 3
-                            self.ui_renderer.draw_text_2d("×", (symbol_x, symbol_y),
-                                                          color=color_symbol, font_size=font_size_sym)
+                            self.ui_renderer.draw_text_2d("×", (symbol_x, symbol_y), color=color_symbol,
+                                                          font_size=font_size_sym)
                         elif panel_idx == 1:
-                            # + medzi vektormi/maticami
                             font_size_sym = 35
                             symbol_x = panel["x"] + panel["cols"] * (Config.MATRIX_CELL_W + Config.MATRIX_GAP) + 10
                             panel_total_height = panel["rows"] * (
                                         Config.MATRIX_CELL_H + Config.MATRIX_GAP) - Config.MATRIX_GAP
                             symbol_y = panel["y"] + (panel_total_height - font_size_sym) // 2
-                            self.ui_renderer.draw_text_2d("+", (symbol_x, symbol_y),
-                                                          color=color_symbol, font_size=font_size_sym)
+                            self.ui_renderer.draw_text_2d("+", (symbol_x, symbol_y), color=color_symbol,
+                                                          font_size=font_size_sym)
                         elif panel_idx == 2:
-                            # × za druhou konštantou
                             font_size_sym = 30
                             symbol_x = panel["x"] + 50 + 5
                             symbol_y = panel["y"] + Config.MATRIX_CELL_H // 2 - font_size_sym // 3
-                            self.ui_renderer.draw_text_2d("×", (symbol_x, symbol_y),
-                                                          color=color_symbol, font_size=font_size_sym)
+                            self.ui_renderer.draw_text_2d("×", (symbol_x, symbol_y), color=color_symbol,
+                                                          font_size=font_size_sym)
                 else:
                     color_symbol = (1, 1, 1) if self.background_dark else (0, 0, 0)
-
                     for panel_idx, panel in enumerate(pending_input_panel["panels"]):
                         is_active_panel = (panel_idx == pending_input_panel["active_panel"])
-
                         if panel.get("type") == "constant":
                             x = panel["x"]
                             y = panel["y"]
@@ -4050,23 +4407,17 @@ class Application:
                                     self.ui_renderer.draw_input_box_3d(x, y, Config.MATRIX_CELL_W, Config.MATRIX_CELL_H,
                                                                        panel["values"][r][c], active)
 
-                        # OPRAVENÉ VYKRESLENIE SYMBOLOV
                         if pending_input_panel["symbol"]:
                             if pending_input_panel.get("has_constant") and panel_idx == 0:
-                                # Symbol za konštantou (×)
                                 font_size_sym = 40
                                 symbol_x = panel["x"] + 50 + 5
-                                # Vertikálne centrovanie vzhľadom na konštantu
                                 symbol_y = panel["y"] + Config.MATRIX_CELL_H // 2 - font_size_sym // 3
                                 self.ui_renderer.draw_text_2d(pending_input_panel["symbol"], (symbol_x, symbol_y),
                                                               color=color_symbol, font_size=font_size_sym)
-
                             elif not pending_input_panel.get("has_constant") and panel_idx < len(
                                     pending_input_panel["panels"]) - 1:
-                                # Symbol medzi vektormi/maticami (+, -)
                                 font_size_sym = 40
                                 symbol_x = panel["x"] + panel["cols"] * (Config.MATRIX_CELL_W + Config.MATRIX_GAP) + 10
-                                # OPRAVA: Správne vertikálne centrovanie
                                 panel_total_height = panel["rows"] * (
                                             Config.MATRIX_CELL_H + Config.MATRIX_GAP) - Config.MATRIX_GAP
                                 symbol_y = panel["y"] + (panel_total_height - font_size_sym) // 2
@@ -4125,39 +4476,32 @@ class Application:
         """Spracuje stlačenie klávesy - ROZŠÍRENÉ"""
         # KROKOVANIE ANIMÁCIE - má prioritu
 
-
         if event.key == pygame.K_SPACE:
             if self.vector_manager.animation_controller.current_operation:
-                # ✅ NAJPRV KROKUJ
                 self.vector_manager.animation_controller.next_step()
 
-                # ✅ POTOM PRESUŇ KAMERU PRE NOVÝ KROK
                 if not self.view_2d_mode:
                     plane = self.vector_manager.animation_controller.current_plane
                     if plane:
                         max_val = self.get_max_from_vectors()
-                        distance = max(15.0, max_val * 3.5)
+                        distance = max(25.0, max_val * 3.0 + 5)
 
                         if plane == "3D":
-                            # Vypočítaj optimálny pohľad pre aktuálny krok
                             optimal_view = self.vector_manager.animation_controller.compute_optimal_view_for_current_step()
                             if optimal_view:
                                 self.camera.move_to_plane(plane, distance, custom_view=optimal_view)
                             else:
-                                # Fallback na pôvodnú metódu
                                 optimal_view = self.vector_manager.animation_controller.compute_optimal_view_for_3d()
                                 if optimal_view:
                                     self.camera.move_to_plane(plane, distance, custom_view=optimal_view)
                                 else:
                                     self.camera.move_to_plane(plane, distance)
                         else:
-                            # Pre XY, XZ, YZ roviny použijem štandardný pohľad
                             self.camera.move_to_plane(plane, distance)
             return
 
-        # BACKSPACE má špeciálnu logiku - ak nie je aktívny žiadny input, použije sa na krokovanie
+        # BACKSPACE - krokovanie späť alebo mazanie textu
         if event.key == pygame.K_BACKSPACE:
-            # Kontrola či je aktívny nejaký input field
             if not any([
                 self.input_handler.show_input_active,
                 self.input_handler.show_multiplication_active,
@@ -4165,17 +4509,14 @@ class Application:
                 self.input_handler.show_random_range_active,
                 self.matrix_active_cell != (-1, -1)
             ]):
-                # Ak nie je aktívny input, použije sa na krokovanie
                 if self.vector_manager.animation_controller.current_operation:
-                    # ✅ NAJPRV KROKUJ SPÄŤ
                     self.vector_manager.animation_controller.prev_step()
 
-                    # ✅ POTOM PRESUŇ KAMERU PRE NOVÝ KROK
                     if not self.view_2d_mode:
                         plane = self.vector_manager.animation_controller.current_plane
                         if plane:
                             max_val = self.get_max_from_vectors()
-                            distance = max(15.0, max_val * 3.5)
+                            distance = max(25.0, max_val * 3.0 + 5)
 
                             if plane == "3D":
                                 optimal_view = self.vector_manager.animation_controller.compute_optimal_view_for_current_step()
@@ -4200,9 +4541,8 @@ class Application:
                 plane = self.vector_manager.animation_controller.current_plane
                 if plane and not self.view_2d_mode:
                     max_val = self.get_max_from_vectors()
-                    distance = max(15.0, max_val * 3.5)
+                    distance = max(25.0, max_val * 3.0 + 5)
 
-                    # ✅ POUŽIJEM AKTUÁLNY KROK
                     if plane == "3D":
                         optimal_view = self.vector_manager.animation_controller.compute_optimal_view_for_current_step()
                         if optimal_view:
@@ -4213,7 +4553,11 @@ class Application:
                         self.camera.move_to_plane(plane, distance)
             return
 
-        # Potom existujúce checky...
+        # NOVÉ: Prepínanie plane grid módu
+        if event.key == pygame.K_b:
+            self.plane_grid_mode = (self.plane_grid_mode + 1) % 6
+            return
+
         if event.key == pygame.K_ESCAPE:
             self.go_back_to_menu()
             self.run_startup_screen()
@@ -4232,7 +4576,7 @@ class Application:
         elif event.key == pygame.K_i:
             self.input_handler.show_input_active = True
 
-        # NEW: Vector input handling
+        # Vector input handling
         if self.input_handler.show_input_active:
             if event.key == pygame.K_RETURN:
                 vec = self.input_handler.parse_input()
@@ -4246,7 +4590,7 @@ class Application:
                 self.input_handler.input_text += event.unicode
             return
 
-        # NEW: Multiplication input handling
+        # Multiplication input handling
         if self.input_handler.show_multiplication_active:
             if event.key == pygame.K_RETURN:
                 multiplier = self.input_handler.parse_multiplication()
@@ -4280,7 +4624,6 @@ class Application:
         if self.show_matrix_input and self.matrix_active_cell != (-1, -1):
             r, c = self.matrix_active_cell
             if event.key == pygame.K_RETURN:
-                # Try to add matrix as vector
                 try:
                     rows = 2 if self.view_2d_mode else 3
                     cols = 2 if self.view_2d_mode else 3
@@ -4496,8 +4839,6 @@ class Application:
         self.render_ui()
         pygame.display.flip()
 
-
-
     def render_2d(self):
         """Vykreslí 2D scénu"""
         self.camera.setup_2d_projection()
@@ -4521,15 +4862,40 @@ class Application:
         color = (0, 0, 0) if not self.background_dark else (1, 1, 1)
         self.draw_vectors_2d(color)
 
-
+    # V triede Application - uprav metódu render_3d:
 
     def render_3d(self):
-        """Vykreslí 3D scénu"""
+        """Vykreslí 3D scénu - S DEPTH LAYERING"""
         self.camera.setup_3d_projection()
 
         length_xyz = max(10, self.get_max_from_vectors())
+        if length_xyz > 10 :
+            length_xyz = length_xyz + 3
 
-        # Draw grid/planes
+        # ========== VRSTVA 1: VÝPLŇ ROVINY (najďalej) ==========
+        glDepthRange(0.2, 1.0)  # Posunie dozadu
+
+        if self.vector_manager.animation_controller.current_operation and self.plane_grid_mode > 0:
+            plane = self.vector_manager.animation_controller.current_plane
+            normal = self.vector_manager.animation_controller.operation_plane_normal
+
+            if plane and normal:
+                if self.plane_grid_mode in (4, 5, 6, 7):
+                    fill_color = (0.6, 0.6, 0) if self.background_dark else (0.8, 0.8, 0.4)
+                    if self.plane_grid_mode in (4, 6):
+                        self.grid_renderer.draw_filled_plane(
+                            normal=normal, center=[0, 0, 0], size=length_xyz,
+                            color=fill_color, alpha=0.25, transparent=True
+                        )
+                    else:
+                        self.grid_renderer.draw_filled_plane(
+                            normal=normal, center=[0, 0, 0], size=length_xyz,
+                            color=fill_color, alpha=1.0, transparent=False
+                        )
+
+        # ========== VRSTVA 2: GRIDY (stredná vrstva) ==========
+        glDepthRange(0.1, 0.9)
+
         if self.grid_mode == 1:
             self.grid_renderer.draw_planes_3d(length_xyz)
         elif self.grid_mode == 2:
@@ -4537,62 +4903,55 @@ class Application:
         elif self.grid_mode == 3:
             self.grid_renderer.draw_grid_3d(length_xyz)
 
-        # Draw axes
-        if self.show_axes:
-            cam_pos = self.camera.get_position()
-            self.axes_renderer.draw_axes_3d(length_xyz, cam_pos, self.vector_renderer)
-
-        # ========== NOVÉ: Grid v rovine operácie ==========
-        #if self.vector_manager.animation_controller.current_operation:
-            # plane = self.vector_manager.animation_controller.current_plane
-
-            # Kresli grid len keď kamera NIE je v animácii (už je v cieľovej pozícii)
-            #  if plane and not self.camera.animating_to_plane:
-                # ZMEŇ TOTO: Použi uloženú normálu namiesto prepočítavania
-                #     normal = self.vector_manager.animation_controller.operation_plane_normal
-
-                # Nakresli grid v rovine
-                #    if normal:
-                    #         grid_color = (0.6, 0.6, 0) if self.background_dark else (0.3, 0.3, 0.3)
-                    #         self.grid_renderer.draw_grid_in_plane(
-                        #             normal=normal,
-                        #             center=[0, 0, 0],
-                        #             size=length_xyz,
-                        #             step=1.0,
-                        #              color=grid_color
-        # )
-        # ========== KONIEC NOVÉHO KÓDU ==========
-
-        # Draw axes
-        if self.show_axes:
-            cam_pos = self.camera.get_position()
-            self.axes_renderer.draw_axes_3d(length_xyz, cam_pos, self.vector_renderer)
-
-        if self.vector_manager.animation_controller.current_operation:
+        # Plane grid pre operácie
+        if self.vector_manager.animation_controller.current_operation and self.plane_grid_mode > 0:
             plane = self.vector_manager.animation_controller.current_plane
+            normal = self.vector_manager.animation_controller.operation_plane_normal
 
-            # ZMEŇ TOTO: Odstráň podmienku animating_to_plane
-            if plane:  # <-- odstránená podmienka "and not self.camera.animating_to_plane"
-                normal = self.vector_manager.animation_controller.operation_plane_normal
+            if plane and normal and self.plane_grid_mode in (1, 2, 3, 4, 5):
+                if self.plane_grid_mode == 1:
+                    grid_color = (0.6, 0.6, 0) if self.background_dark else (0.4, 0.4, 0)
+                    step = 1.0
+                elif self.plane_grid_mode == 2:
+                    grid_color = (0, 0.6, 0.6) if self.background_dark else (0, 0.4, 0.4)
+                    step = 0.5
+                elif self.plane_grid_mode == 3:
+                    grid_color = (0.6, 0, 0.6) if self.background_dark else (0.4, 0, 0.4)
+                    step = 2.0
+                elif self.plane_grid_mode in (4, 5):
+                    grid_color = (0.2, 0.2, 0.2) if self.background_dark else (0.5, 0.5, 0.5)
+                    step = 1.0
 
-                # Nakresli grid v rovine
-                if normal:
-                    grid_color = (0.6, 0.6, 0) if self.background_dark else (0.3, 0.3, 0.3)
-                    self.grid_renderer.draw_grid_in_plane(
-                        normal=normal,
-                        center=[0, 0, 0],
-                        size=length_xyz,
-                        step=1.0,
-                        color=grid_color
-                    )
+                self.grid_renderer.draw_grid_in_plane(
+                    normal=normal, center=[0, 0, 0], size=length_xyz,
+                    step=step, color=grid_color
+                )
 
-        # Draw vectors
+        # ========== VRSTVA 3: OSI (pred gridmi) ==========
+        glDepthRange(0.05, 0.85)
+
+        if self.show_axes:
+            cam_pos = self.camera.get_position()
+            self.axes_renderer.draw_axes_3d(length_xyz, cam_pos, self.vector_renderer)
+
+        # ========== VRSTVA 4: VEKTORY (vždy navrchu) ==========
+        glDepthRange(0.0, 0.8)  # Najbližšie ku kamere
+
         if self.grid_mode in (1, 2):
             color = (0, 0, 0)
         else:
             color = (0, 0, 0) if not self.background_dark else (1, 1, 1)
         self.draw_vectors_3d(color)
 
+        # Reset depth range na default
+        glDepthRange(0.0, 1.0)
+
+    def _update_background_color(self):
+        """Aktualizuje farbu pozadia podľa témy"""
+        if self.background_dark:
+            glClearColor(*Colors.DARK_BG, 1.0)
+        else:
+            glClearColor(*Colors.LIGHT_BG, 1.0)
     def draw_vectors_2d(self, color):
         """Vykreslí vektory v 2D - POUŽÍVA animation_controller"""
         if self.vector_manager.animation_controller.current_operation:
@@ -5106,8 +5465,7 @@ class Application:
                             glPopMatrix()
 
     def render_ui(self):
-        """Vykreslí UI overlay - ROZŠÍRENÉ S LEPŠÍMI POPISMI"""
-        # Setup 2D projection for UI
+        """Vykreslí UI overlay"""
         glMatrixMode(GL_PROJECTION)
         glPushMatrix()
         glLoadIdentity()
@@ -5124,7 +5482,8 @@ class Application:
         self.ui_renderer.draw_button_2d(toggle_bg_rect.x, toggle_bg_rect.y,
                                         toggle_bg_rect.width, toggle_bg_rect.height,
                                         label, active=True)
-        # === NOVÉ: Tlačidlo späť do menu ===
+
+        # Tlačidlo späť do menu
         back_button_rect = pygame.Rect(20, 10, 120, 40)
         self.ui_renderer.draw_button_2d(back_button_rect.x, back_button_rect.y,
                                         back_button_rect.width, back_button_rect.height,
@@ -5232,8 +5591,8 @@ class Application:
                 font_size=20,
                 color=(0, 0, 0) if not self.background_dark else (1, 1, 1)
             )
-        # V metóde render_ui - uprav sekciu s popismi krokov
-        # INDIKÁTOR KROKOVANIA - OPRAVENÉ POPISY PRE MATICE
+
+        # INDIKÁTOR KROKOVANIA
         if self.vector_manager.animation_controller.current_operation:
             ctrl = self.vector_manager.animation_controller
             math_info = ctrl.get_math_display_info()
@@ -5253,14 +5612,13 @@ class Application:
 
             step_text = f"{op_name} - Krok {ctrl.current_step}/{ctrl.max_steps}"
 
-            # Popisy krokov - AKTUALIZOVANÉ S KOMUTATÍVNOSŤOU
             if is_matrix:
                 descriptions = {
                     'add': [
                         "Zobrazenie matíc A (oranžová) a B (modrá)",
                         "Vektory matice B posunuté na konce vektorov matice A",
                         "Výsledná matica A + B (fialová)",
-                        "Komutatívnosť: A + B = B + A (rovnobežník)"  # NOVÝ
+                        "Komutatívnosť: A + B = B + A (rovnobežník)"
                     ],
                     'subtract': [
                         "Zobrazenie matíc A (oranžová) a B (modrá)",
@@ -5279,7 +5637,7 @@ class Application:
                         "Zobrazenie vektorov v1 (oranžová) a v2 (modrá)",
                         "Vektor v2 posunutý na koniec v1",
                         "Výsledný vektor v1 + v2 (fialová)",
-                        "Komutatívnosť: v1 + v2 = v2 + v1 (rovnobežník)"  # NOVÝ
+                        "Komutatívnosť: v1 + v2 = v2 + v1 (rovnobežník)"
                     ],
                     'subtract': [
                         "Zobrazenie vektorov v1 (oranžová) a v2 (modrá)",
@@ -5303,11 +5661,6 @@ class Application:
             desc_list = descriptions.get(ctrl.operation_type, [""])
             desc = desc_list[ctrl.current_step] if ctrl.current_step < len(desc_list) else ""
 
-
-            # ... zvyšok kódu pre vykreslenie textu ...
-
-            # Vykreslí indikátor
-            text_color = (1, 1, 1) if self.background_dark else (0, 0, 0)
             self.ui_renderer.draw_text_2d(step_text, (self.width // 2 - 150, 20),
                                           color=text_color, font_size=24)
             self.ui_renderer.draw_text_2d(desc, (self.width // 2 - 200, 50),
@@ -5315,6 +5668,8 @@ class Application:
             self.ui_renderer.draw_text_2d("SPACE=ďalší | BACKSPACE=späť | C=zrušiť",
                                           (self.width // 2 - 180, 75),
                                           color=text_color, font_size=16)
+
+        # Informácie o rovine a gridu
         if self.vector_manager.animation_controller.current_operation:
             plane = self.vector_manager.animation_controller.current_plane
             normal = self.vector_manager.animation_controller.operation_plane_normal
@@ -5322,30 +5677,32 @@ class Application:
             if plane and not self.view_2d_mode:
                 text_color = (1, 1, 1) if self.background_dark else (0, 0, 0)
 
-                # Zobraz detekovanú rovinu
                 plane_text = f"Rovina: {plane}"
                 self.ui_renderer.draw_text_2d(plane_text, (self.width // 2 - 180, 95),
                                               color=text_color, font_size=16)
 
-                # Zobraz normálu (pre debug)
                 if normal:
                     normal_text = f"Normála: ({normal[0]:.2f}, {normal[1]:.2f}, {normal[2]:.2f})"
                     self.ui_renderer.draw_text_2d(normal_text, (self.width // 2 - 180, 115),
                                                   color=text_color, font_size=14)
 
-                # Zobraz aktuálne uhly kamery (pre debug)
                 cam_text = f"Kamera: az={self.camera.azimuth:.1f}° el={self.camera.elevation:.1f}°"
                 self.ui_renderer.draw_text_2d(cam_text, (self.width // 2 - 180, 135),
                                               color=text_color, font_size=14)
 
+                # Plane grid mód
+                grid_modes = ["vypnutý", "grid", "grid jemný", "grid hrubý", "vyplnená + grid", "vyplnená"]
+                grid_text = f"Plane grid (B): {grid_modes[self.plane_grid_mode]}"
+                self.ui_renderer.draw_text_2d(grid_text, (self.width // 2 - 180, 155),
+                                              color=text_color, font_size=14)
+
                 if not self.camera.animating_to_plane:
                     self.ui_renderer.draw_text_2d("V=zobraz rovinu",
-                                                  (self.width // 2 - 180, 155),
+                                                  (self.width // 2 - 180, 175),
                                                   color=text_color, font_size=14)
 
         glEnable(GL_DEPTH_TEST)
 
-        # Restore projection
         glPopMatrix()
         glMatrixMode(GL_PROJECTION)
         glPopMatrix()
