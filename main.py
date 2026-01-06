@@ -1714,7 +1714,7 @@ class GridRenderer:
 
         # Posuň rovinu mierne dozadu aby vektory boli vždy viditeľné
         glEnable(GL_POLYGON_OFFSET_FILL)
-        glPolygonOffset(1.0, 1.0)  # Posunie rovinu mierne dozadu v depth bufferi
+        glPolygonOffset(1.0, 1.0)
 
         if transparent:
             glEnable(GL_BLEND)
@@ -1814,8 +1814,9 @@ class GridRenderer:
 
         center = np.array(center, dtype=np.float32)
 
-        # Nakresli grid
+        # Nakresli grid s polygon offset
         glPushAttrib(GL_LINE_BIT | GL_CURRENT_BIT | GL_DEPTH_BUFFER_BIT)
+        glDepthFunc(GL_LEQUAL)
         glEnable(GL_POLYGON_OFFSET_LINE)
         glPolygonOffset(-1.0, -1.0)
 
@@ -1843,131 +1844,76 @@ class GridRenderer:
             glVertex3f(p2[0], p2[1], p2[2])
 
         glEnd()
-        glPopAttrib()
-
-    @staticmethod
-    def draw_grid_3d(size=10.0, step=1.0):
-        """Nakreslí 3D mriežku - OPTIMALIZOVANÉ"""
-        glPushAttrib(GL_DEPTH_BUFFER_BIT)
-        glDepthFunc(GL_LEQUAL)
-        glEnable(GL_POLYGON_OFFSET_LINE)
-        glPolygonOffset(1.0, 1.0)
-
-        glLineWidth(2.0)
-        glBegin(GL_LINES)
-
-        offset = 0.02
-        step_int = max(1, int(step))
-        size_int = int(size)
-
-        for i in range(-size_int, size_int + 1, step_int):
-            fi = float(i)
-
-            # XZ plane (červená) - na Y=0
-            glColor3f(0.9, 0.2, 0.2)
-            glVertex3f(-size, offset, fi)
-            glVertex3f(size, offset, fi)
-            glVertex3f(fi, offset, -size)
-            glVertex3f(fi, offset, size)
-
-            # XY plane (zelená) - na Z=0
-            glColor3f(0.2, 0.9, 0.2)
-            glVertex3f(-size, fi, offset)
-            glVertex3f(size, fi, offset)
-            glVertex3f(fi, -size, offset)
-            glVertex3f(fi, size, offset)
-
-            # YZ plane (modrá) - na X=0
-            glColor3f(0.2, 0.2, 0.9)
-            glVertex3f(offset, -size, fi)
-            glVertex3f(offset, size, fi)
-            glVertex3f(offset, fi, -size)
-            glVertex3f(offset, fi, size)
-
-        glEnd()
 
         glDisable(GL_POLYGON_OFFSET_LINE)
         glPopAttrib()
+    @staticmethod
+    def draw_grid_3d(size=10.0, step=1.0):
+        """Nakreslí 3D mriežku - len čiary bez výplne"""
+        # XY rovina (Z=0) - zelená
+        GridRenderer.draw_grid_in_plane(
+            normal=[0, 0, 1], center=[0, 0, 0], size=size, step=step,
+            color=(0.2, 0.7, 0.2)
+        )
+        # XZ rovina (Y=0) - červená
+        GridRenderer.draw_grid_in_plane(
+            normal=[0, 1, 0], center=[0, 0, 0], size=size, step=step,
+            color=(0.7, 0.2, 0.2)
+        )
+        # YZ rovina (X=0) - modrá
+        GridRenderer.draw_grid_in_plane(
+            normal=[1, 0, 0], center=[0, 0, 0], size=size, step=step,
+            color=(0.2, 0.2, 0.7)
+        )
 
     @staticmethod
-    def draw_planes_3d(size=2.0, step=1.0, colored=False):
-        """Nakreslí 3D plochy - BEZ Z-FIGHTING"""
-        glEnable(GL_POLYGON_OFFSET_FILL)
-        glPolygonOffset(2.0, 2.0)
+    def draw_planes_3d(size=10.0, step=1.0, colored=False):
+        """Nakreslí 3D plochy s výplňou a gridom"""
 
-        # Farby pre plochy
         if colored:
-            plane_color = (0.8, 0.8, 0.8)
+            # Farebné plochy - nepriehľadné
+            alpha = 1.0
+            transparent = False
+            xy_color = (0.2, 0.8, 0.2)  # Zelená pre XY
+            xz_color = (0.8, 0.2, 0.2)  # Červená pre XZ
+            yz_color = (0.2, 0.2, 0.8)  # Modrá pre YZ
         else:
-            xz_color = (1.0, 0, 0)
-            xy_color = (0, 1.0, 0)
-            yz_color = (0, 0, 1.0)
+            # Neutrálne sivé plochy - priesvitné
+            alpha = 1.0
+            transparent = False
+            xy_color = (0.5, 0.5, 0.5)
+            xz_color = (0.5, 0.5, 0.5)
+            yz_color = (0.5, 0.5, 0.5)
 
-        # XZ plane (Y=0)
-        glColor3f(*(plane_color if colored else xz_color))
-        glBegin(GL_QUADS)
-        glVertex3f(-size, 0, -size)
-        glVertex3f(size, 0, -size)
-        glVertex3f(size, 0, size)
-        glVertex3f(-size, 0, size)
-        glEnd()
+        # XY rovina (Z=0) - zelená
+        GridRenderer.draw_filled_plane(
+            normal=[0, 0, 1], center=[0, 0, 0], size=size,
+            color=xy_color, alpha=alpha, transparent=transparent
+        )
+        GridRenderer.draw_grid_in_plane(
+            normal=[0, 0, 1], center=[0, 0, 0], size=size, step=step,
+            color=(0.1, 0.4, 0.1) if colored else (0.3, 0.3, 0.3)
+        )
 
-        # XY plane (Z=0)
-        glColor3f(*(plane_color if colored else xy_color))
-        glBegin(GL_QUADS)
-        glVertex3f(-size, -size, 0)
-        glVertex3f(size, -size, 0)
-        glVertex3f(size, size, 0)
-        glVertex3f(-size, size, 0)
-        glEnd()
+        # XZ rovina (Y=0) - červená
+        GridRenderer.draw_filled_plane(
+            normal=[0, 1, 0], center=[0, 0, 0], size=size,
+            color=xz_color, alpha=alpha, transparent=transparent
+        )
+        GridRenderer.draw_grid_in_plane(
+            normal=[0, 1, 0], center=[0, 0, 0], size=size, step=step,
+            color=(0.4, 0.1, 0.1) if colored else (0.3, 0.3, 0.3)
+        )
 
-        # YZ plane (X=0)
-        glColor3f(*(plane_color if colored else yz_color))
-        glBegin(GL_QUADS)
-        glVertex3f(0, -size, -size)
-        glVertex3f(0, size, -size)
-        glVertex3f(0, size, size)
-        glVertex3f(0, -size, size)
-        glEnd()
-
-        glDisable(GL_POLYGON_OFFSET_FILL)
-
-        # Grid čiary - KAŽDÁ ROVINA MÁ INÝ OFFSET
-        glColor3f(0, 0, 0)
-        glLineWidth(1.5)
-
-        step_int = max(1, int(step))
-        size_int = int(size)
-
-        # XZ plane grid (Y = 0.01)
-        glBegin(GL_LINES)
-        for x in range(-size_int, size_int + 1, step_int):
-            glVertex3f(x, 0.01, -size)
-            glVertex3f(x, 0.01, size)
-        for z in range(-size_int, size_int + 1, step_int):
-            glVertex3f(-size, 0.01, z)
-            glVertex3f(size, 0.01, z)
-        glEnd()
-
-        # XY plane grid (Z = 0.02)
-        glBegin(GL_LINES)
-        for x in range(-size_int, size_int + 1, step_int):
-            glVertex3f(x, -size, 0.02)
-            glVertex3f(x, size, 0.02)
-        for y in range(-size_int, size_int + 1, step_int):
-            glVertex3f(-size, y, 0.02)
-            glVertex3f(size, y, 0.02)
-        glEnd()
-
-        # YZ plane grid (X = 0.03)
-        glBegin(GL_LINES)
-        for y in range(-size_int, size_int + 1, step_int):
-            glVertex3f(0.03, y, -size)
-            glVertex3f(0.03, y, size)
-        for z in range(-size_int, size_int + 1, step_int):
-            glVertex3f(0.03, -size, z)
-            glVertex3f(0.03, size, z)
-        glEnd()
+        # YZ rovina (X=0) - modrá
+        GridRenderer.draw_filled_plane(
+            normal=[1, 0, 0], center=[0, 0, 0], size=size,
+            color=yz_color, alpha=alpha, transparent=transparent
+        )
+        GridRenderer.draw_grid_in_plane(
+            normal=[1, 0, 0], center=[0, 0, 0], size=size, step=step,
+            color=(0.1, 0.1, 0.4) if colored else (0.3, 0.3, 0.3)
+        )
 
 
 
@@ -3718,7 +3664,11 @@ class Application:
             rows = 2 if self.view_2d_mode else 3
             cols = 2 if self.view_2d_mode else 3
 
-            if len(self.matrix_inputs) != rows or len(self.matrix_inputs[0]) != cols:
+            # Bezpečnejšia kontrola matrix_inputs
+            needs_reinit = len(self.matrix_inputs) != rows
+            if not needs_reinit and len(self.matrix_inputs) > 0:
+                needs_reinit = len(self.matrix_inputs[0]) != cols
+            if needs_reinit:
                 self.matrix_inputs = [["" for _ in range(cols)] for _ in range(rows)]
 
             mx, my = pygame.mouse.get_pos()
@@ -3780,6 +3730,8 @@ class Application:
             # =================================================================
             # EVENT HANDLING
             # =================================================================
+            restart_loop = False  # NOVÝ FLAG
+
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     self.running = False
@@ -3798,14 +3750,16 @@ class Application:
                         self.startup_screen = True
                         self.is_not_baza = True
                         pending_input_panel = None
-                        self.matrix_inputs = [["" for _ in range(cols)] for _ in range(rows)]
+                        self.matrix_active_cell = (-1, -1)
                         self.run_startup_screen()
                         if not self.running:
                             return
-                        rows = 2 if self.view_2d_mode else 3
-                        cols = 2 if self.view_2d_mode else 3
-                        self.matrix_inputs = [["" for _ in range(cols)] for _ in range(rows)]
-                        continue
+                        # Reinicializuj matrix_inputs pre nový režim
+                        new_rows = 2 if self.view_2d_mode else 3
+                        new_cols = 2 if self.view_2d_mode else 3
+                        self.matrix_inputs = [["" for _ in range(new_cols)] for _ in range(new_rows)]
+                        restart_loop = True  # NASTAV FLAG
+                        break  # VYSKOČÍ Z FOR LOOP
 
                     # === Štandardná báza ===
                     if std_basis_rect.collidepoint(mx, my):
@@ -4107,21 +4061,24 @@ class Application:
                                     break
 
                 elif event.type == pygame.KEYDOWN:
-                    # === ESC ===
+                        # === ESC ===
                     if event.key == pygame.K_ESCAPE:
                         if pending_input_panel:
                             pending_input_panel = None
+                            continue
                         else:
                             self.startup_screen = True
                             self.is_not_baza = True
-                            self.matrix_inputs = [["" for _ in range(cols)] for _ in range(rows)]
+                            self.matrix_active_cell = (-1, -1)
                             self.run_startup_screen()
                             if not self.running:
-                                return
-                            rows = 2 if self.view_2d_mode else 3
-                            cols = 2 if self.view_2d_mode else 3
-                            self.matrix_inputs = [["" for _ in range(cols)] for _ in range(rows)]
-                        continue
+                                 return
+                                # Reinicializuj matrix_inputs pre nový režim
+                            new_rows = 2 if self.view_2d_mode else 3
+                            new_cols = 2 if self.view_2d_mode else 3
+                            self.matrix_inputs = [["" for _ in range(new_cols)] for _ in range(new_rows)]
+                            restart_loop = True
+                            break
 
                     # === Pending panel input ===
                     pending_handled = False
@@ -4275,6 +4232,9 @@ class Application:
                             self.matrix_inputs[r][c] = self.matrix_inputs[r][c][:-1]
                         elif event.unicode.isdigit() or event.unicode in ".-":
                             self.matrix_inputs[r][c] += event.unicode
+
+            if restart_loop:
+                continue  # Skočí na začiatok while loop s novými hodnotami
 
             # =================================================================
             # RENDER
