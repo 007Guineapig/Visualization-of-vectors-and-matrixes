@@ -641,6 +641,7 @@ class VectorManager:
         self.pending_vector = None
         self.selected_vector_index = -1
         self.animation_controller = AnimationController()
+        self.span_controller = SpanAnimationController()
 
     def add_vector(self, vec, progress=0.0):
         """Add a new vector"""
@@ -695,6 +696,9 @@ class VectorManager:
         """Update frame-based animations"""
         # Update animation controller
         self.animation_controller.update(dt)
+
+        # NOVÉ: Update span controller
+        self.span_controller.update(dt)
 
         # Pôvodná logika pre iné animácie
         for v in self.animated_vectors:
@@ -1849,6 +1853,7 @@ class GridRenderer:
         glPopAttrib()
     @staticmethod
     def draw_grid_3d(size=10.0, step=1.0):
+        step = 2.0
         """Nakreslí 3D mriežku - len čiary bez výplne"""
         # XY rovina (Z=0) - zelená
         GridRenderer.draw_grid_in_plane(
@@ -3487,6 +3492,293 @@ import ast
 import random
 
 
+class SpanAnimationController:
+    """Ovládač animácie pre vizualizáciu span (lineárneho obalu)"""
+
+    def __init__(self):
+        self.active = False
+        self.basis_vectors = []
+        self.current_step = 0
+        self.combinations = []
+        self.animating = False
+        self.animation_progress = 0.0
+        self.animation_speed = 1.0
+
+        # Predgenerované body kruhu
+        self.circle_radius = 2.5
+        self.num_circle_points = 20
+        self.circle_points = []
+        self.variation_radius = 0.8
+
+        self.current_circle_index = 0
+        self.last_target_point = None
+
+        # Zoznam zachovaných vektorov
+        self.persistent_vectors = []
+        self.persistence_chance = 0.4  # 40% šanca
+
+        # NOVÉ: Automatické prehrávanie
+        self.auto_play = False
+        self.auto_play_delay = 1.0  # Sekundy medzi krokmi
+        self.auto_play_timer = 0.0
+
+    def setup_span(self, vector1, vector2):
+        """Nastaví span animáciu pre dva vektory - upraví dĺžky pre kruh"""
+        import numpy as np
+
+        v1 = np.array(vector1, dtype=float)
+        v2 = np.array(vector2, dtype=float)
+
+        v1_direction = v1 / np.linalg.norm(v1)
+        v2_direction = v2 / np.linalg.norm(v2)
+
+        v2_orthogonal = v2 - np.dot(v2, v1_direction) * v1_direction
+        v2_orth_direction = v2_orthogonal / np.linalg.norm(v2_orthogonal)
+
+        len1 = np.linalg.norm(v1)
+        len2 = np.linalg.norm(v2)
+        target_length = (len1 + len2) / 2.0
+
+        new_v1 = v1_direction * target_length
+        new_v2 = v2_orth_direction * target_length
+
+        self.basis_vectors = [new_v1.tolist(), new_v2.tolist()]
+
+        self.current_step = 0
+        self.active = True
+        self.animating = False
+        self.animation_progress = 1.0
+        self.current_circle_index = 0
+
+        # NOVÉ: Vyčisti zachované vektory
+        self.persistent_vectors = []
+
+        self.circle_points = []
+        for i in range(self.num_circle_points):
+            angle = (2 * math.pi * i) / self.num_circle_points
+            c1 = self.circle_radius * math.cos(angle)
+            c2 = self.circle_radius * math.sin(angle)
+            self.circle_points.append((c1, c2))
+
+        print(f"Vygenerovaných {len(self.circle_points)} bodov na kruhu s polomerom {self.circle_radius}")
+        print(f"Pôvodné: v1={vector1} (dĺžka {len1:.2f}), v2={vector2} (dĺžka {len2:.2f})")
+        print(f"Upravené: v1={new_v1} (dĺžka {target_length:.2f}), v2={new_v2} (dĺžka {target_length:.2f})")
+
+        # ZMENENÉ: Pridaj nultý krok s oboma vektormi
+        self.combinations = [
+            {'c1': 1.0, 'c2': 1.0}  # Krok 0: zobraz oba vektory v1 + v2
+        ]
+
+    def next_step(self):
+        """Prejdi na ďalší krok - s možnosťou zachovania výsledného vektora"""
+        # ZACHOVANÉ: Pred prechodom na nový krok, s 30% šancou ulož aktuálny výsledný vektor
+        # ALE len od kroku 1 ďalej (nie z kroku 0, kde nie je fialový vektor)
+        if self.current_step >= 1 and random.random() < self.persistence_chance:
+            # Vypočítaj aktuálny výsledný vektor
+            current_comb = self.combinations[self.current_step]
+            c1, c2 = current_comb['c1'], current_comb['c2']
+            v1, v2 = self.basis_vectors
+
+            result = [c1 * v1[i] + c2 * v2[i] for i in range(len(v1))]
+
+            # Ulož ho ako perzistentný vektor s mierne inou farbou
+            self.persistent_vectors.append({
+                'vec': result,
+                'c1': c1,
+                'c2': c2
+            })
+            print(f"✓ Vektor zachovaný! (c1={c1:.2f}, c2={c2:.2f})")
+
+        self.current_step += 1
+
+        if self.current_step >= len(self.combinations):
+            if not self.basis_vectors or len(self.basis_vectors) < 2:
+                c1 = random.uniform(-2, 2)
+                c2 = random.uniform(-2, 2)
+                self.combinations.append({'c1': c1, 'c2': c2})
+            else:
+                v1 = self.basis_vectors[0]
+                v2 = self.basis_vectors[1]
+
+                if not self.circle_points:
+                    print("CHYBA: Kruh nebol vygenerovaný!")
+                    return False
+
+                self.current_circle_index = (self.current_circle_index + 1) % len(self.circle_points)
+
+                circle_point = self.circle_points[self.current_circle_index]
+                base_c1, base_c2 = circle_point
+
+                random_radius_factor = random.uniform(0.3, 1.2)
+                scaled_c1 = base_c1 * random_radius_factor
+                scaled_c2 = base_c2 * random_radius_factor
+
+                angle_variation = random.uniform(-0.2, 0.2)
+                angle = math.atan2(scaled_c2, scaled_c1) + angle_variation
+                radius = math.sqrt(scaled_c1 ** 2 + scaled_c2 ** 2)
+
+                c1 = radius * math.cos(angle)
+                c2 = radius * math.sin(angle)
+
+                result_x = c1 * v1[0] + c2 * v2[0]
+                result_y = c1 * v1[1] + c2 * v2[1]
+
+                self.last_target_point = (result_x, result_y)
+                self.combinations.append({'c1': c1, 'c2': c2})
+
+                print(f"Krok {self.current_step}: Polomer {radius:.2f} "
+                      f"→ ({result_x:.2f}, {result_y:.2f}), c1={c1:.2f}, c2={c2:.2f}")
+
+        self.animating = True
+        self.animation_progress = 0.0
+        return True
+
+    def prev_step(self):
+        """Vráť sa na predošlý krok"""
+        if self.current_step > 0:
+            # NOVÉ: Odstráň posledný zachovaný vektor ak existuje
+            if self.persistent_vectors:
+                # Skontroluj či posledný zachovaný vektor patrí k aktuálnemu kroku
+                last_persistent = self.persistent_vectors[-1]
+                current_comb = self.combinations[self.current_step]
+
+                if (abs(last_persistent['c1'] - current_comb['c1']) < 0.01 and
+                        abs(last_persistent['c2'] - current_comb['c2']) < 0.01):
+                    self.persistent_vectors.pop()
+                    print("✗ Zachovaný vektor odstránený")
+
+            self.current_step -= 1
+
+            if self.current_step >= 2:
+                steps_after_basis = self.current_step - 2
+                self.current_circle_index = steps_after_basis % len(self.circle_points)
+            else:
+                self.current_circle_index = 0
+
+            self.animating = True
+            self.animation_progress = 0.0
+            return True
+        return False
+
+    def update(self, dt):
+        """Aktualizuj animáciu"""
+        if self.animating:
+            self.animation_progress += dt * self.animation_speed
+            if self.animation_progress >= 1.0:
+                self.animation_progress = 1.0
+                self.animating = False
+
+                # NOVÉ: Ak je auto_play aktívne, resetuj timer
+                if self.auto_play:
+                    self.auto_play_timer = 0.0
+
+        # NOVÉ: Automatické krokovanie
+        if self.auto_play and not self.animating:
+            self.auto_play_timer += dt
+            if self.auto_play_timer >= self.auto_play_delay:
+                self.next_step()
+                self.auto_play_timer = 0.0
+
+    def get_current_vectors(self):
+        """Vráti aktuálne vektory na vykreslenie s interpoláciou"""
+        if not self.active or not self.basis_vectors:
+            return []
+
+        v1, v2 = self.basis_vectors
+
+        current_comb = self.combinations[self.current_step]
+        c1_target = current_comb['c1']
+        c2_target = current_comb['c2']
+
+        # Interpolácia koeficientov
+        if self.animating and self.current_step > 0:
+            prev_comb = self.combinations[self.current_step - 1]
+            t = self.animation_progress
+            t = t * t * (3.0 - 2.0 * t)
+
+            c1 = prev_comb['c1'] + (c1_target - prev_comb['c1']) * t
+            c2 = prev_comb['c2'] + (c2_target - prev_comb['c2']) * t
+        else:
+            c1, c2 = c1_target, c2_target
+
+        scaled_v1 = [c1 * x for x in v1]
+        scaled_v2 = [c2 * x for x in v2]
+
+        vectors = []
+
+        # Oranžový vektor (vždy od originu)
+        vectors.append({
+            'vec': scaled_v1,
+            'offset': [0, 0, 0],
+            'color': (1.0, 0.5, 0.2),
+            'alpha': 1.0,
+            'label': f'{c1:.2f}·v1'
+        })
+
+        # ANIMÁCIA OFFSETU modrého vektora
+        if self.current_step == 0:
+            # Krok 0 - modrý od originu
+            blue_offset = [0, 0, 0]
+        elif self.current_step == 1 and self.animating:
+            # Prechod z kroku 0 na krok 1 - animuj offset z [0,0,0] na scaled_v1
+            t = self.animation_progress
+            t = t * t * (3.0 - 2.0 * t)  # Smooth interpolation
+            blue_offset = [scaled_v1[i] * t for i in range(len(scaled_v1))]
+        else:
+            # Krok 1+ - modrý od konca oranžového
+            blue_offset = scaled_v1
+
+        vectors.append({
+            'vec': scaled_v2,
+            'offset': blue_offset,
+            'color': (0.2, 0.5, 1.0),
+            'alpha': 1.0,
+            'label': f'{c2:.2f}·v2'
+        })
+
+        # Od kroku 1 ďalej zobraz fialový výsledok a zachované vektory
+        if self.current_step >= 1:
+            # ZACHOVANÉ VEKTORY - vykresli všetky (svetlo fialové, priesvitné)
+            for i, persistent in enumerate(self.persistent_vectors):
+                vectors.append({
+                    'vec': persistent['vec'],
+                    'offset': [0, 0, 0],
+                    'color': (0.6, 0.2, 0.6),
+                    'alpha': 0.4,
+                    'label': f"zachovaný #{i + 1}"
+                })
+
+            # Výsledná kombinácia - aktuálna (tmavo fialová)
+            result = [scaled_v1[i] + scaled_v2[i] for i in range(len(v1))]
+
+            # FADE IN fialového vektora počas prechodu z kroku 0 na krok 1
+            if self.current_step == 1 and self.animating:
+                # Fade in alpha od 0 do 1
+                purple_alpha = self.animation_progress
+            else:
+                # Krok 1+ - plná viditeľnosť
+                purple_alpha = 1.0
+
+            vectors.append({
+                'vec': result,
+                'offset': [0, 0, 0],
+                'color': (0.5, 0.0, 0.5),
+                'alpha': purple_alpha,
+                'label': f'{c1:.2f}·v1 + {c2:.2f}·v2'
+            })
+
+        return vectors
+
+    def clear(self):
+        """Vyčisti span animáciu"""
+        self.active = False
+        self.basis_vectors = []
+        self.combinations = []
+        self.current_step = 0
+        self.circle_points = []
+        self.current_circle_index = 0
+        self.persistent_vectors = []  # NOVÉ: Vyčisti aj zachované vektory
+
 class Application:
     """Hlavná aplikácia - KOMPLETNE AKTUALIZOVANÁ"""
 
@@ -3653,10 +3945,10 @@ class Application:
 
             pygame.display.flip()
 
-    # V triede Application - upravená metóda run_baza_input()
     def run_baza_input(self):
-        """Spustí obrazovku pre zadanie bázy - OPRAVENÁ VERZIA so zosynchronizovanými súradnicami"""
+        """Spustí obrazovku pre zadanie bázy - KOMPLETNÁ OPRAVENÁ VERZIA"""
         pending_input_panel = None
+        span_input_panel = None
 
         while self.is_not_baza and self.running:
             dt = self.clock.tick(Config.FPS) / 1000.0
@@ -3676,43 +3968,34 @@ class Application:
             # =================================================================
             # DEFINUJ VŠETKY RECT-y TU - PRED EVENT HANDLING AJ RENDEROVANÍM
             # =================================================================
-
-            # Späť tlačidlo
             back_rect = pygame.Rect(20, 15, 90, 36)
-
-            # Theme toggle (responzívne - od dolného okraja)
             toggle_rect = pygame.Rect(30, self.height - 55, 130, 38)
 
-            # Pravý panel - báza (responzívne - od pravého okraja)
             basis_x = self.width - 210
             basis_y = 70
             std_basis_rect = pygame.Rect(basis_x, basis_y, 190, 44)
+            span_rect = pygame.Rect(basis_x, basis_y + 55, 190, 44)
 
-            # Karty
             card_x, card_y = 25, 70
             card_w, card_h = 200, 290
             card2_x = card_x + card_w + 20
 
-            # Tlačidlá v kartách
             btn_w = card_w - 30
             btn_h = 42
             btn_gap = 8
             btn_y_start = card_y + 45
 
-            # Vektorové operácie rect-y
             vec_op_names = ["Sčítania", "Odčitanie", "Násobenie Konštantou", "Lineárna kombinácia"]
             vec_op_rects = []
             for i in range(4):
                 rect = pygame.Rect(card_x + 15, btn_y_start + i * (btn_h + btn_gap), btn_w, btn_h)
                 vec_op_rects.append(rect)
 
-            # Maticové operácie rect-y
             mat_op_rects = []
             for i in range(4):
                 rect = pygame.Rect(card2_x + 15, btn_y_start + i * (btn_h + btn_gap), btn_w, btn_h)
                 mat_op_rects.append(rect)
 
-            # Matrix input cells pre vlastnú bázu
             matrix_x = basis_x + 25
             matrix_y = basis_y + 125
             cell_w, cell_h = 45, 34
@@ -3730,7 +4013,7 @@ class Application:
             # =================================================================
             # EVENT HANDLING
             # =================================================================
-            restart_loop = False  # NOVÝ FLAG
+            restart_loop = False
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -3750,16 +4033,16 @@ class Application:
                         self.startup_screen = True
                         self.is_not_baza = True
                         pending_input_panel = None
+                        span_input_panel = None
                         self.matrix_active_cell = (-1, -1)
                         self.run_startup_screen()
                         if not self.running:
                             return
-                        # Reinicializuj matrix_inputs pre nový režim
                         new_rows = 2 if self.view_2d_mode else 3
                         new_cols = 2 if self.view_2d_mode else 3
                         self.matrix_inputs = [["" for _ in range(new_cols)] for _ in range(new_rows)]
-                        restart_loop = True  # NASTAV FLAG
-                        break  # VYSKOČÍ Z FOR LOOP
+                        restart_loop = True
+                        break
 
                     # === Štandardná báza ===
                     if std_basis_rect.collidepoint(mx, my):
@@ -3769,6 +4052,24 @@ class Application:
                             self.saved_baza.append(((1, 0, 0), (0, 1, 0), (0, 0, 1)))
                         print("Použitá štandardná báza (identitná matica)")
                         self.is_not_baza = False
+                        continue
+
+                    # === SPAN TLAČIDLO ===
+                    if span_rect.collidepoint(mx, my) and self.view_2d_mode:
+                        panel_width = 2 * (Config.MATRIX_CELL_W + Config.MATRIX_GAP)
+                        panel_height = 2 * (Config.MATRIX_CELL_H + Config.MATRIX_GAP)
+
+                        start_x = self.width // 2 - panel_width // 2
+                        start_y = self.height // 2 - panel_height // 2
+
+                        span_input_panel = {
+                            'values': [["" for _ in range(2)] for _ in range(2)],
+                            'active_cell': (0, 0),
+                            'x': start_x,
+                            'y': start_y
+                        }
+                        pending_input_panel = None
+                        self.matrix_active_cell = (-1, -1)
                         continue
 
                     # === Theme toggle ===
@@ -4052,8 +4353,25 @@ class Application:
                             if clicked_panel:
                                 break
 
+                    # === SPAN PANEL KLIKNUTIA ===
+                    if span_input_panel:
+                        clicked = False
+                        for r in range(2):
+                            for c in range(2):
+                                x = span_input_panel['x'] + c * (Config.MATRIX_CELL_W + Config.MATRIX_GAP)
+                                y = span_input_panel['y'] + r * (Config.MATRIX_CELL_H + Config.MATRIX_GAP)
+                                rect = pygame.Rect(x, y, Config.MATRIX_CELL_W, Config.MATRIX_CELL_H)
+                                if rect.collidepoint(mx, my):
+                                    span_input_panel['active_cell'] = (r, c)
+                                    clicked = True
+                                    break
+                            if clicked:
+                                break
+                        if clicked:
+                            continue
+
                     # === Matrix cells pre vlastnú bázu ===
-                    if not pending_input_panel:
+                    if not pending_input_panel and not span_input_panel:
                         for r in range(rows):
                             for c in range(cols):
                                 if matrix_cell_rects[r][c].collidepoint(mx, my):
@@ -4061,8 +4379,11 @@ class Application:
                                     break
 
                 elif event.type == pygame.KEYDOWN:
-                        # === ESC ===
+                    # === ESC ===
                     if event.key == pygame.K_ESCAPE:
+                        if span_input_panel:
+                            span_input_panel = None
+                            continue
                         if pending_input_panel:
                             pending_input_panel = None
                             continue
@@ -4070,19 +4391,56 @@ class Application:
                             self.startup_screen = True
                             self.is_not_baza = True
                             self.matrix_active_cell = (-1, -1)
+                            span_input_panel = None
                             self.run_startup_screen()
                             if not self.running:
-                                 return
-                                # Reinicializuj matrix_inputs pre nový režim
+                                return
                             new_rows = 2 if self.view_2d_mode else 3
                             new_cols = 2 if self.view_2d_mode else 3
                             self.matrix_inputs = [["" for _ in range(new_cols)] for _ in range(new_rows)]
                             restart_loop = True
                             break
 
-                    # === Pending panel input ===
+                    # KRITICKÁ OPRAVA: Inicializuj tieto premenné NA ZAČIATKU keydown handlera
+                    span_handled = False
                     pending_handled = False
-                    if pending_input_panel:
+
+                    # === SPAN PANEL INPUT ===
+                    if span_input_panel:
+                        r, c = span_input_panel['active_cell']
+                        span_handled = True
+
+                        if event.key == pygame.K_RETURN:
+                            all_filled = True
+                            for row in span_input_panel['values']:
+                                for val in row:
+                                    if not val.strip():
+                                        all_filled = False
+                                        break
+
+                            if all_filled:
+                                try:
+                                    v1 = [float(span_input_panel['values'][0][0]),
+                                          float(span_input_panel['values'][1][0])]
+                                    v2 = [float(span_input_panel['values'][0][1]),
+                                          float(span_input_panel['values'][1][1])]
+
+                                    self.vector_manager.span_controller.setup_span(v1, v2)
+                                    self.saved_baza.append(((1, 0), (0, 1)))
+
+                                    span_input_panel = None
+                                    self.is_not_baza = False
+                                    print(f"Span nastavený pre vektory v1={v1}, v2={v2}")
+                                except Exception as e:
+                                    print("Chyba pri parsovaní span matice:", e)
+
+                        elif event.key == pygame.K_BACKSPACE:
+                            span_input_panel['values'][r][c] = span_input_panel['values'][r][c][:-1]
+                        elif event.unicode.isdigit() or event.unicode in ".-":
+                            span_input_panel['values'][r][c] += event.unicode
+
+                    # === Pending panel input ===
+                    if not span_handled and pending_input_panel:
                         active_panel_idx = pending_input_panel["active_panel"]
                         panel = pending_input_panel["panels"][active_panel_idx]
                         r, c = panel["active_cell"]
@@ -4199,7 +4557,7 @@ class Application:
                                 panel["values"][r][c] += event.unicode
 
                     # === Originálna báza input ===
-                    if not pending_handled and self.matrix_active_cell != (-1, -1):
+                    if not span_handled and not pending_handled and self.matrix_active_cell != (-1, -1):
                         r, c = self.matrix_active_cell
                         if event.key == pygame.K_RETURN:
                             try:
@@ -4234,7 +4592,7 @@ class Application:
                             self.matrix_inputs[r][c] += event.unicode
 
             if restart_loop:
-                continue  # Skočí na začiatok while loop s novými hodnotami
+                continue
 
             # =================================================================
             # RENDER
@@ -4287,6 +4645,18 @@ class Application:
                                             hover=hover_std, primary=True)
             basis_desc = "Identitná matica I₂" if self.view_2d_mode else "Identitná matica I₃"
             self.ui_renderer.draw_text_2d(basis_desc, (basis_x + 30, basis_y + 52), sub_col, 13)
+
+            # === SPAN TLAČIDLO ===
+            if self.view_2d_mode:
+                hover_span = span_rect.collidepoint(mx, my)
+                self.ui_renderer.draw_button_2d(span_rect.x, span_rect.y,
+                                                span_rect.w, span_rect.h,
+                                                "Span (Lineárny obal)",
+                                                is_dark=self.background_dark,
+                                                hover=hover_span, primary=True)
+                self.ui_renderer.draw_text_2d("Zadaj 2 vektory (stĺpce)",
+                                              (basis_x + 20, span_rect.y + 52),
+                                              sub_col, 13)
 
             # === VLASTNÁ BÁZA ===
             self.ui_renderer.draw_card(basis_x, basis_y + 80, 190, 180, self.background_dark, "Vlastná báza")
@@ -4391,6 +4761,41 @@ class Application:
                                 self.ui_renderer.draw_text_2d(pending_input_panel["symbol"], (symbol_x, symbol_y),
                                                               color=color_symbol, font_size=font_size_sym)
 
+            # === SPAN INPUT PANEL ===
+            if span_input_panel:
+                panel_width = 2 * (Config.MATRIX_CELL_W + Config.MATRIX_GAP) + 40
+                panel_height = 2 * (Config.MATRIX_CELL_H + Config.MATRIX_GAP) + 80
+                bg_x = span_input_panel['x'] - 20
+                bg_y = span_input_panel['y'] - 40
+
+                self.ui_renderer.draw_card(bg_x, bg_y, panel_width, panel_height,
+                                           self.background_dark, "Span - Zadaj 2 vektory")
+
+                for r in range(2):
+                    for c in range(2):
+                        x = span_input_panel['x'] + c * (Config.MATRIX_CELL_W + Config.MATRIX_GAP)
+                        y = span_input_panel['y'] + r * (Config.MATRIX_CELL_H + Config.MATRIX_GAP)
+                        active = (r, c) == span_input_panel['active_cell']
+
+                        col_color = Config.COL_COLORS_OUTLINE[c] if c < len(Config.COL_COLORS_OUTLINE) else None
+                        self.ui_renderer.draw_input_box_3d(x, y, Config.MATRIX_CELL_W, Config.MATRIX_CELL_H,
+                                                           span_input_panel['values'][r][c], active,
+                                                           fill_color_outline=col_color,
+                                                           is_dark=self.background_dark)
+
+                self.ui_renderer.draw_text_2d("v1",
+                                              (span_input_panel['x'] + 5, span_input_panel['y'] - 25),
+                                              text_col, 16)
+                self.ui_renderer.draw_text_2d("v2",
+                                              (span_input_panel['x'] + Config.MATRIX_CELL_W + Config.MATRIX_GAP + 5,
+                                               span_input_panel['y'] - 25),
+                                              text_col, 16)
+
+                help_y = span_input_panel['y'] + 2 * (Config.MATRIX_CELL_H + Config.MATRIX_GAP) + 10
+                self.ui_renderer.draw_text_2d("Enter = potvrdiť | ESC = zrušiť",
+                                              (span_input_panel['x'] - 50, help_y),
+                                              sub_col, 14)
+
             pygame.display.flip()
 
     def go_back_to_menu(self):
@@ -4440,9 +4845,37 @@ class Application:
                 self.handle_mouse_motion(event)
 
     def handle_keypress(self, event):
-        """Spracuje stlačenie klávesy - ROZŠÍRENÉ"""
-        # KROKOVANIE ANIMÁCIE - má prioritu
+        """Spracuje stlačenie klávesy - ROZŠÍRENÉ O SPAN"""
 
+        if self.vector_manager.span_controller.active:
+            if event.key == pygame.K_p:
+                # Toggle auto-play
+                self.vector_manager.span_controller.auto_play = not self.vector_manager.span_controller.auto_play
+                if self.vector_manager.span_controller.auto_play:
+                    print("▶ Auto-play ZAPNUTÝ")
+                else:
+                    print("⏸ Auto-play VYPNUTÝ")
+                return
+
+            if event.key == pygame.K_SPACE:
+                self.vector_manager.span_controller.next_step()
+                return
+            elif event.key == pygame.K_BACKSPACE:
+                # Backspace len pre krokovanie, nie mazanie textu
+                if not any([
+                    self.input_handler.show_input_active,
+                    self.input_handler.show_multiplication_active,
+                    self.input_handler.show_matrix_size_active,
+                    self.input_handler.show_random_range_active,
+                    self.matrix_active_cell != (-1, -1)
+                ]):
+                    self.vector_manager.span_controller.prev_step()
+                    return
+            elif event.key == pygame.K_c:
+                self.vector_manager.span_controller.clear()
+                return
+
+        # ===== KROKOVANIE ANIMÁCIE - PÔVODNÝ KÓD =====
         if event.key == pygame.K_SPACE:
             if self.vector_manager.animation_controller.current_operation:
                 self.vector_manager.animation_controller.next_step()
@@ -4566,7 +4999,6 @@ class Application:
                 self.input_handler.multiplication_input = ""
                 self.input_handler.show_multiplication_active = False
             elif event.key == pygame.K_BACKSPACE:
-                self.input_handler.multiplication_input = self.input_handler.multiplication_input[:-1]
                 self.input_handler.multiplication_input = self.input_handler.multiplication_input[:-1]
             else:
                 self.input_handler.multiplication_input += event.unicode
@@ -4826,11 +5258,102 @@ class Application:
                                             self.width, self.height,
                                             self.ui_renderer)
 
+        # NOVÉ: Vykresli body kruhu ak je span aktívny
+        # debug purposes
+        if self.vector_manager.span_controller.active:
+            self.draw_span_circle_points()
+
         # Draw vectors
         color = (0, 0, 0) if not self.background_dark else (1, 1, 1)
         self.draw_vectors_2d(color)
 
-    # V triede Application - uprav metódu render_3d:
+    def draw_span_circle_points(self):
+        """Vykreslí body kruhu pre span vizualizáciu"""
+        span_ctrl = self.vector_manager.span_controller
+
+        if not span_ctrl.circle_points or not span_ctrl.basis_vectors:
+            return
+
+        v1, v2 = span_ctrl.basis_vectors
+
+        # Farby
+        inactive_color = (0.5, 0.5, 0.5)  # Sivá pre neaktívne body
+        active_color = (1.0, 0.8, 0.0)  # Žltá pre aktuálny bod
+        past_color = (0.3, 0.8, 0.3)  # Zelená pre prejdené body
+
+        # Polomer bodov - škálovaný podľa zoomu
+        base_radius = 0.08
+        radius = base_radius * self.camera.ortho_scale / 6.5
+
+        # Vykresli všetky body kruhu
+        for i, (c1, c2) in enumerate(span_ctrl.circle_points):
+            # Vypočítaj pozíciu bodu v priestore
+            point_x = c1 * v1[0] + c2 * v2[0]
+            point_y = c1 * v1[1] + c2 * v2[1]
+
+            # Urči farbu podľa stavu
+            if i == span_ctrl.current_circle_index and span_ctrl.current_step >= 2:
+                # Aktuálny bod - žltý
+                color = active_color
+                point_radius = radius * 1.5  # Väčší
+            elif span_ctrl.current_step >= 2 and i < span_ctrl.current_circle_index:
+                # Prejdené body - zelené
+                color = past_color
+                point_radius = radius
+            elif span_ctrl.current_step >= 2 and i == 0 and span_ctrl.current_circle_index > 0 and \
+                    (span_ctrl.current_step - 2) >= len(span_ctrl.circle_points):
+                # Bod 0 po dokončení prvého kola - tiež zelený
+                color = past_color
+                point_radius = radius
+            else:
+                # Neprejdené body - sivé
+                color = inactive_color
+                point_radius = radius * 0.8  # Menší
+
+            # Vykresli bod
+            self.vector_renderer.draw_circle_2d(
+                [point_x, point_y, 0.1],
+                radius=point_radius,
+                color=color,
+                alpha=0.7
+            )
+
+            # VOLITEĽNE: Vykresli číslo bodu (pre debug)
+            if False:  # Zmeň na True ak chceš vidieť čísla
+                glMatrixMode(GL_PROJECTION)
+                glPushMatrix()
+                glLoadIdentity()
+                width, height = pygame.display.get_window_size()
+
+                aspect = width / height
+                if aspect >= 1.0:
+                    left = -self.camera.ortho_scale * aspect + self.camera.pan_offset_x
+                    right = self.camera.ortho_scale * aspect + self.camera.pan_offset_x
+                    bottom = -self.camera.ortho_scale + self.camera.pan_offset_y
+                    top = self.camera.ortho_scale + self.camera.pan_offset_y
+                else:
+                    left = -self.camera.ortho_scale + self.camera.pan_offset_x
+                    right = self.camera.ortho_scale + self.camera.pan_offset_x
+                    bottom = -self.camera.ortho_scale / aspect + self.camera.pan_offset_y
+                    top = self.camera.ortho_scale / aspect + self.camera.pan_offset_y
+
+                glOrtho(0, width, height, 0, -1, 1)
+                glMatrixMode(GL_MODELVIEW)
+                glPushMatrix()
+                glLoadIdentity()
+
+                # Prepočítaj na screen coordinates
+                sx = (point_x - left) / (right - left) * width
+                sy = height - (point_y - bottom) / (top - bottom) * height
+
+                text_color = (0, 0, 0) if not self.background_dark else (1, 1, 1)
+                self.ui_renderer.draw_text_2d(str(i), (sx - 5, sy - 20),
+                                              color=text_color, font_size=14)
+
+                glPopMatrix()
+                glMatrixMode(GL_PROJECTION)
+                glPopMatrix()
+                glMatrixMode(GL_MODELVIEW)
 
 
     def render_3d(self):
@@ -4955,8 +5478,78 @@ class Application:
             glClearColor(*Colors.DARK_BG, 1.0)
         else:
             glClearColor(*Colors.LIGHT_BG, 1.0)
+
     def draw_vectors_2d(self, color):
-        """Vykreslí vektory v 2D - POUŽÍVA animation_controller"""
+        """Vykreslí vektory v 2D - S PODPOROU PRE SPAN"""
+
+        # ===== SPAN MÁ PRIORITU =====
+        if self.vector_manager.span_controller.active:
+            vectors_to_draw = self.vector_manager.span_controller.get_current_vectors()
+
+            if self.vectors_as_points:
+                for v in vectors_to_draw:
+                    vec = v['vec']
+                    offset = v.get('offset', [0, 0])
+                    v_color = v.get('color', color)
+                    v_alpha = v.get('alpha', 1.0)
+                    base_radius = 0.07
+                    radius = base_radius * self.camera.ortho_scale / 6.5
+
+                    if v_alpha < 1.0:
+                        glDepthMask(GL_FALSE)
+
+                    pos = [vec[0] + offset[0], vec[1] + offset[1] if len(vec) > 1 else offset[1], 0.2]
+                    self.vector_renderer.draw_circle_2d(pos, radius=radius, color=v_color, alpha=v_alpha)
+
+                    if v_alpha < 1.0:
+                        glDepthMask(GL_TRUE)
+            else:
+                for v in vectors_to_draw:
+                    vec = v['vec']
+                    offset = v.get('offset', [0, 0])
+                    v_color = v.get('color', color)
+                    v_alpha = v.get('alpha', 1.0)
+
+                    x = vec[0]
+                    y = vec[1] if len(vec) > 1 else 0
+                    ox = offset[0]
+                    oy = offset[1] if len(offset) > 1 else 0
+
+                    glLineWidth(6)
+
+                    if v_alpha < 1.0:
+                        glEnable(GL_BLEND)
+                        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+                        glColor4f(v_color[0], v_color[1], v_color[2], v_alpha)
+                    else:
+                        glColor3f(*v_color)
+
+                    glBegin(GL_LINES)
+                    glVertex2f(ox, oy)
+                    glVertex2f(ox + x, oy + y)
+                    glEnd()
+
+                    # Šípka
+                    vec_length = math.sqrt(x * x + y * y)
+                    if vec_length > 0.1:
+                        angle = math.atan2(y, x)
+                        arrow_size = 0.3
+                        px, py = ox + x, oy + y
+                        glBegin(GL_LINES)
+                        glVertex2f(px, py)
+                        glVertex2f(px - arrow_size * math.cos(angle - 0.3),
+                                   py - arrow_size * math.sin(angle - 0.3))
+                        glVertex2f(px, py)
+                        glVertex2f(px - arrow_size * math.cos(angle + 0.3),
+                                   py - arrow_size * math.sin(angle + 0.3))
+                        glEnd()
+
+                    if v_alpha < 1.0:
+                        glDisable(GL_BLEND)
+
+            return  # Koniec pre span
+
+        # ===== ANIMATION CONTROLLER - PÔVODNÝ KÓD =====
         if self.vector_manager.animation_controller.current_operation:
             vectors_to_draw = self.vector_manager.animation_controller.get_vectors_to_draw()
 
@@ -5702,6 +6295,38 @@ class Application:
                 if not self.camera.animating_to_plane:
                     self.ui_renderer.draw_text_2d("V=zobraz rovinu",
                                                   (self.width // 2 - 180, 175),
+                                                  color=text_color, font_size=14)
+
+                # V metóde render_ui() - nájdi túto časť a nahraď ju:
+
+                if self.vector_manager.span_controller.active:
+                    text_color = (1, 1, 1) if self.background_dark else (0, 0, 0)
+
+                    step_text = f"Span - Krok {self.vector_manager.span_controller.current_step + 1}"
+                    self.ui_renderer.draw_text_2d(step_text, (self.width // 2 - 150, 20),
+                                                  color=text_color, font_size=24)
+
+                    comb = self.vector_manager.span_controller.combinations[
+                        self.vector_manager.span_controller.current_step]
+                    desc = f"c1·v1 + c2·v2 kde c1={comb['c1']:.2f}, c2={comb['c2']:.2f}"
+                    self.ui_renderer.draw_text_2d(desc, (self.width // 2 - 200, 50),
+                                                  color=text_color, font_size=18)
+
+                    # UPRAVENÝ TEXT
+                    if self.vector_manager.span_controller.auto_play:
+                        control_text = "P=pauza | BACKSPACE=späť | C=zrušiť"
+                        play_status = "▶ AUTO-PLAY AKTÍVNY"
+                    else:
+                        control_text = "P=play | SPACE=ďalší | BACKSPACE=späť | C=zrušiť"
+                        play_status = "⏸ Manuálny režim"
+
+                    self.ui_renderer.draw_text_2d(control_text, (self.width // 2 - 200, 75),
+                                                  color=text_color, font_size=16)
+                    self.ui_renderer.draw_text_2d(play_status, (self.width // 2 - 120, 95),
+                                                  color=text_color, font_size=14)
+
+                    self.ui_renderer.draw_text_2d("(Nekonečné krokovanie - nové kombinácie sa generujú priebežne)",
+                                                  (self.width // 2 - 240, 115),
                                                   color=text_color, font_size=14)
 
         glEnable(GL_DEPTH_TEST)
