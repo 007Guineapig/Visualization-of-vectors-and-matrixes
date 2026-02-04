@@ -5808,12 +5808,12 @@ class Application:
                 point_radius = radius * 0.8  # Menší
 
             # Vykresli bod
-            self.vector_renderer.draw_circle_2d(
-                [point_x, point_y, 0.1],
-                radius=point_radius,
-                color=color,
-                alpha=0.7
-            )
+            # self.vector_renderer.draw_circle_2d(
+                #      [point_x, point_y, 0.1],
+                #      radius=point_radius,
+                #      color=color,
+            #      alpha=0.7
+            # )
 
             # VOLITEĽNE: Vykresli číslo bodu (pre debug)
             if False:  # Zmeň na True ak chceš vidieť čísla
