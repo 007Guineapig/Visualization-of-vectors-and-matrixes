@@ -3665,6 +3665,7 @@ class SpanAnimationController:
         # NOVÉ: Flag pre "show all" režim a uložené nastavenia kamery
         self.show_all_mode = False
         self.locked_ortho_scale = None
+        self.color_scheme = 0
 
     def are_vectors_dependent(self):
         """Zistí či sú vektory lineárne závislé"""
@@ -3734,72 +3735,130 @@ class SpanAnimationController:
                 })
 
             print(f"✨ Zobrazených {len(self.persistent_vectors)} bodov na priamke")
+            self.locked_ortho_scale = 15.0  # Vhodná hodnota pre grid_range=10
+
 
         else:
-            # PRÍPAD 2: NEZÁVISLÉ VEKTORY - ROVINA (OBMEDZENÁ)
+
+            # PRÍPAD 2: NEZÁVISLÉ VEKTORY - ROVINA
+
             print("🟢 Nezávislé vektory - kreslím rovinu!")
 
-            grid_range = 10  # ZMENENÉ z 50 na 10
+            grid_range = 10
             grid_range_x = 18
+
             step = 1.0
 
             for grid_x in range(-grid_range_x, grid_range_x + 1, int(step)):
+
                 for grid_y in range(-grid_range, grid_range + 1, int(step)):
+
                     target_x = grid_x + 0.5
+
                     target_y = grid_y + 0.5
 
                     det = v1[0] * v2[1] - v1[1] * v2[0]
+
                     if abs(det) < 1e-6:
                         continue
 
                     c1 = (target_x * v2[1] - target_y * v2[0]) / det
+
                     c2 = (v1[0] * target_y - v1[1] * target_x) / det
 
                     result = [c1 * v1[i] + c2 * v2[i] for i in range(len(v1))]
 
-                    # Farebný gradient podľa uhla
-                    angle = math.atan2(target_y, target_x)
-                    hue = (angle + math.pi) / (2 * math.pi)
+                    # FAREBNÁ SCHÉMA
 
-                    h = hue * 6
-                    i_h = int(h) % 6
-                    f = h - int(h)
+                    if self.color_scheme == 1:
 
-                    if i_h == 0:
-                        r, g, b = 1, f, 0
-                    elif i_h == 1:
-                        r, g, b = 1 - f, 1, 0
-                    elif i_h == 2:
-                        r, g, b = 0, 1, f
-                    elif i_h == 3:
-                        r, g, b = 0, 1 - f, 1
-                    elif i_h == 4:
-                        r, g, b = f, 0, 1
+                        # RAKÚSKA VLAJKA
+
+                        normalized_y = target_y / grid_range
+
+                        if normalized_y > 0.33:
+
+                            r, g, b = 0.93, 0.11, 0.14
+
+                        elif normalized_y < -0.33:
+
+                            r, g, b = 0.93, 0.11, 0.14
+
+                        else:
+
+                            r, g, b = 1.0, 1.0, 1.0
+
                     else:
-                        r, g, b = 1, 0, 1 - f
 
-                    r = 0.2 + r * 0.8
-                    g = 0.2 + g * 0.8
-                    b = 0.2 + b * 0.8
+                        # RAINBOW (pôvodný)
+
+                        angle = math.atan2(target_y, target_x)
+
+                        hue = (angle + math.pi) / (2 * math.pi)
+
+                        h = hue * 6
+
+                        i_h = int(h) % 6
+
+                        f = h - int(h)
+
+                        if i_h == 0:
+
+                            r, g, b = 1, f, 0
+
+                        elif i_h == 1:
+
+                            r, g, b = 1 - f, 1, 0
+
+                        elif i_h == 2:
+
+                            r, g, b = 0, 1, f
+
+                        elif i_h == 3:
+
+                            r, g, b = 0, 1 - f, 1
+
+                        elif i_h == 4:
+
+                            r, g, b = f, 0, 1
+
+                        else:
+
+                            r, g, b = 1, 0, 1 - f
+
+                        r = 0.2 + r * 0.8
+
+                        g = 0.2 + g * 0.8
+
+                        b = 0.2 + b * 0.8
 
                     distance = math.sqrt(target_x ** 2 + target_y ** 2)
+
                     max_distance = grid_range * math.sqrt(2)
+
                     alpha = max(0.3, 1.0 - (distance / max_distance) * 0.7)
 
                     self.persistent_vectors.append({
+
                         'vec': result,
+
                         'c1': c1,
+
                         'c2': c2,
+
                         'color': (r, g, b),
+
                         'alpha': alpha,
+
                         'is_persistent': True
+
                     })
 
-            print(
-                f"✨ Zobrazených {len(self.persistent_vectors)} kombinácií (mriežka {grid_range * 2 + 1}x{grid_range * 2 + 1})")
+            print(f"✨ Zobrazených {len(self.persistent_vectors)} kombinácií")
+            self.locked_ortho_scale = 6.0  # Vhodná hodnota pre grid_range=10
 
         # NOVÉ: Ulož ideálny zoom level
-        self.locked_ortho_scale = 6.0  # Vhodná hodnota pre grid_range=10
+
 
     def setup_span(self, vector1, vector2):
         """Nastaví span animáciu pre dva vektory"""
@@ -5250,6 +5309,17 @@ class Application:
                     self.camera.pan_offset_y = 0
                 return
 
+                # NOVÉ: Prepínanie farebnej schémy klávesou F
+            if event.key == pygame.K_f:
+                span_ctrl = self.vector_manager.span_controller
+                span_ctrl.color_scheme = (span_ctrl.color_scheme + 1) % 2
+                if span_ctrl.show_all_mode:
+                    # Pregeneruj s novou schémou
+                    span_ctrl.show_all_combinations()
+                scheme_names = ["Rainbow", "Rakúsko"]
+                print(f"Farebná schéma: {scheme_names[span_ctrl.color_scheme]}")
+                return
+
             if event.key == pygame.K_p:
                 # Toggle auto-play
                 self.vector_manager.span_controller.auto_play = not self.vector_manager.span_controller.auto_play
@@ -5982,7 +6052,7 @@ class Application:
                     vec = v['vec']
                     offset = v.get('offset', [0, 0])
                     v_color = v.get('color', (0.6, 0.2, 0.6))
-                    v_alpha = v.get('alpha', 0.4)
+                    # v_alpha = v.get('alpha', 0.4)  # STARÝ RIADOK
 
                     x = vec[0]
                     y = vec[1] if len(vec) > 1 else 0
@@ -5993,9 +6063,9 @@ class Application:
                     if vec_length > 0.1:
                         angle = math.atan2(y, x)
 
-                        # Šípka na pôvodnom konci vektora
+                        # Šípka na pôvodnom konci vektora - PLNÁ ALPHA
                         self.vector_renderer.draw_triangle_arrowhead_2d(
-                            ox + x, oy + y, angle, 1.0, v_color, v_alpha, z=0.05
+                            ox + x, oy + y, angle, 1.0, v_color, 1.0, z=0.05  # Zmenené z v_alpha na 1.0
                         )
 
                 # 3. VŠETKY ČIARY aktuálnych (stredné Z)
