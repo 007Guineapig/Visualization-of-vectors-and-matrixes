@@ -728,6 +728,33 @@ class VectorRenderer:
     _circle_cache = {}
     _quadric = None
 
+    @staticmethod
+    def draw_triangle_arrowhead_2d(tip_x, tip_y, angle, size, color, alpha=1.0, z=0.0):
+        size = 0.6
+        """Nakreslí vyplnený trojuholníkový hrot šípky v 2D"""
+        spread_angle = 0.45
+
+        back_x1 = tip_x - size * math.cos(angle - spread_angle)
+        back_y1 = tip_y - size * math.sin(angle - spread_angle)
+        back_x2 = tip_x - size * math.cos(angle + spread_angle)
+        back_y2 = tip_y - size * math.sin(angle + spread_angle)
+
+        if alpha < 1.0:
+            glEnable(GL_BLEND)
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+            glColor4f(color[0], color[1], color[2], alpha)
+        else:
+            glColor3f(color[0], color[1], color[2])
+
+        glBegin(GL_TRIANGLES)
+        glVertex3f(tip_x, tip_y, z)
+        glVertex3f(back_x1, back_y1, z)
+        glVertex3f(back_x2, back_y2, z)
+        glEnd()
+
+        if alpha < 1.0:
+            glDisable(GL_BLEND)
+
     @classmethod
     def _get_circle_points(cls, segments=16):
         """Vráti pre-computed body pre kruh"""
@@ -771,8 +798,105 @@ class VectorRenderer:
         radius = float(base_max_radius) * scale
         return max(radius, float(min_radius))
 
-    @staticmethod
     def draw_vectors_2d_animated(vectors, dt, line_width=6, arrow_fraction=0.15,
+                                 speed=0.5, ortho_scale=6.0, color=(1, 1, 1)):
+        """Animované kreslenie 2D vektorov s trojuholníkovými šípkami"""
+        if not vectors:
+            return
+
+        glPushAttrib(GL_LINE_BIT | GL_CURRENT_BIT)
+        glLineWidth(line_width)
+
+        zoom_scale = ortho_scale / 6.0
+        base_arrow_size = line_width * 0.08 * zoom_scale
+
+        for v in vectors:
+            vec = v['vec']
+            v_color = v.get('color', color)
+            v_alpha = v.get('alpha', 1.0)
+
+            if isinstance(vec[0], (int, float)):
+                progress = v.get('progress', 0.0)
+                progress = min(progress + dt * speed, 1.0)
+                v['progress'] = progress
+
+                x, y = vec[0], vec[1] if len(vec) > 1 else 0
+                px, py = x * progress, y * progress
+
+                vec_len = math.hypot(px, py)
+                if vec_len > 0.01:
+                    angle = math.atan2(y, x)
+                    arrow_size = min(base_arrow_size, vec_len * 0.25)
+
+                    # Skráť čiaru
+                    line_end_x = px - arrow_size * 0.7 * math.cos(angle)
+                    line_end_y = py - arrow_size * 0.7 * math.sin(angle)
+
+                    if v_alpha < 1.0:
+                        glEnable(GL_BLEND)
+                        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+                        glColor4f(v_color[0], v_color[1], v_color[2], v_alpha)
+                    else:
+                        glColor3f(*v_color)
+
+                    glBegin(GL_LINES)
+                    glVertex2f(0, 0)
+                    glVertex2f(line_end_x, line_end_y)
+                    glEnd()
+
+                    # Trojuholníková šípka
+                    VectorRenderer.draw_triangle_arrowhead_2d(
+                        px, py, angle, arrow_size, v_color, v_alpha
+                    )
+
+                    if v_alpha < 1.0:
+                        glDisable(GL_BLEND)
+
+            else:
+                n = len(vec)
+                if 'row_progress' not in v:
+                    v['row_progress'] = [0.0] * n
+
+                for i, row in enumerate(vec):
+                    x, y = row[0], row[1] if len(row) > 1 else 0
+
+                    progress = v['row_progress'][i]
+                    progress = min(progress + dt * speed, 1.0)
+                    v['row_progress'][i] = progress
+
+                    px, py = x * progress, y * progress
+
+                    vec_len = math.hypot(px, py)
+                    if vec_len > 0.01:
+                        angle = math.atan2(y, x)
+                        arrow_size = min(base_arrow_size, vec_len * 0.25)
+
+                        line_end_x = px - arrow_size * 0.7 * math.cos(angle)
+                        line_end_y = py - arrow_size * 0.7 * math.sin(angle)
+
+                        if v_alpha < 1.0:
+                            glEnable(GL_BLEND)
+                            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+                            glColor4f(v_color[0], v_color[1], v_color[2], v_alpha)
+                        else:
+                            glColor3f(*v_color)
+
+                        glBegin(GL_LINES)
+                        glVertex2f(0, 0)
+                        glVertex2f(line_end_x, line_end_y)
+                        glEnd()
+
+                        VectorRenderer.draw_triangle_arrowhead_2d(
+                            px, py, angle, arrow_size, v_color, v_alpha
+                        )
+
+                        if v_alpha < 1.0:
+                            glDisable(GL_BLEND)
+
+        glPopAttrib()
+
+    @staticmethod
+    def draw_vectors_2d_animated2(vectors, dt, line_width=6, arrow_fraction=0.15,
                                  speed=0.5, ortho_scale=6.0, color=(1, 1, 1)):
         """Animované kreslenie 2D vektorov - OPTIMALIZOVANÉ"""
         if not vectors:
@@ -1516,6 +1640,7 @@ class Camera:
         self.target_azimuth = self.azimuth
         self.target_elevation = self.elevation
 
+
     # V triede Camera - opravená metóda move_to_plane pre lepšie uhly
     # V triede Camera - opravená metóda move_to_plane
     def move_to_plane(self, plane_type, distance=10.0, custom_view=None):
@@ -1657,17 +1782,25 @@ class Camera:
         self.pan_offset_x -= dx * 0.002 * self.ortho_scale
         self.pan_offset_y += dy * 0.002 * self.ortho_scale
 
-    def zoom_in(self, is_2d):
+    def zoom_in(self, is_2d, locked_scale=None):
         """Priblíženie"""
         if is_2d:
-            self.ortho_scale /= 1.1
+            new_scale = self.ortho_scale / 1.1
+            # Ak je locked_scale, nepriblížuj viac ako je povolené
+            if locked_scale is not None:
+                new_scale = max(new_scale, locked_scale * 0.5)  # Povoľ priblížiť max 2x
+            self.ortho_scale = new_scale
         else:
             self.distance = max(1.0, self.distance - self.zoom_speed)
 
-    def zoom_out(self, is_2d):
+    def zoom_out(self, is_2d, locked_scale=None):
         """Oddialenie"""
         if is_2d:
-            self.ortho_scale *= 1.1
+            new_scale = self.ortho_scale * 1.1
+            # Ak je locked_scale, neodďaľuj viac ako je povolené
+            if locked_scale is not None:
+                new_scale = min(new_scale, locked_scale * 1.5)  # Povoľ oddialiť max 1.5x
+            self.ortho_scale = new_scale
         else:
             self.distance += self.zoom_speed
 
@@ -3516,15 +3649,34 @@ class SpanAnimationController:
 
         # Zoznam zachovaných vektorov
         self.persistent_vectors = []
-        self.persistence_chance = 0.4  # 40% šanca
+        self.persistence_chance = 0.4
 
-        # NOVÉ: Automatické prehrávanie
+        # Automatické prehrávanie
         self.auto_play = False
-        self.auto_play_delay = 1.0  # Sekundy medzi krokmi
+        self.auto_play_delay = 1.0
         self.auto_play_timer = 0.0
 
+        # Pre závislé vektory (priamka)
+        self.line_points = []
+        self.line_direction = 1
+        self.line_step = 0.5
+        self.current_line_position = 0.0
+
+        # NOVÉ: Flag pre "show all" režim a uložené nastavenia kamery
+        self.show_all_mode = False
+        self.locked_ortho_scale = None
+
+    def are_vectors_dependent(self):
+        """Zistí či sú vektory lineárne závislé"""
+        if not self.basis_vectors or len(self.basis_vectors) < 2:
+            return False
+
+        v1, v2 = self.basis_vectors
+        cross_product = v1[0] * v2[1] - v1[1] * v2[0]
+        return abs(cross_product) < 1e-6
+
     def show_all_combinations(self):
-        """Zobrazí všetky možné kombinácie ako burst - FUNGUJE AJ PRE ZÁVISLÉ VEKTORY"""
+        """Zobrazí všetky možné kombinácie - OBMEDZENÝ PRIESTOR"""
         if not self.basis_vectors or len(self.basis_vectors) < 2:
             return
 
@@ -3532,75 +3684,67 @@ class SpanAnimationController:
         self.auto_play = False
         self.persistent_vectors = []
 
-        v1, v2 = self.basis_vectors
+        # NOVÉ: Aktivuj show_all režim
+        self.show_all_mode = True
 
-        # ZISTI, ČI SÚ VEKTORY ZÁVISLÉ
-        cross_product = v1[0] * v2[1] - v1[1] * v2[0]
-        are_dependent = abs(cross_product) < 1e-6
+        v1, v2 = self.basis_vectors
+        are_dependent = self.are_vectors_dependent()
 
         if are_dependent:
-            # ========================================
             # PRÍPAD 1: ZÁVISLÉ VEKTORY - PRIAMKA
-            # ========================================
             print("🔴 Závislé vektory - kreslím priamku!")
 
-            # Rozsah pre koeficienty pozdĺž priamky
-            c_range = 20  # Od -20 do +20
-            step = 0.5  # Krok 0.5 (hustejšie body)
+            v1_length = math.sqrt(v1[0] ** 2 + v1[1] ** 2)
 
-            # Použijeme len prvý vektor (druhý je len násobok)
+            # Obmedzený rozsah
+            c_range = 10
+            num_points = 100
+            step = (2 * c_range) / num_points
+
             direction = np.array(v1)
-
-            # Generuj body pozdĺž priamky
             c_values = np.arange(-c_range, c_range + step, step)
 
             for c in c_values:
-                # Bod na priamke: c * v1
-                result = (c * direction).tolist()
+                result = (c * direction / max(v1_length, 0.01)).tolist()
+                result = [c * v1[0], c * v1[1]]
 
-                # Farebný gradient podľa pozície na priamke
-                # Od modrej (záporné) cez bielu (0) po červenú (kladné)
                 if c < 0:
-                    # Modrý gradient
-                    t = abs(c) / c_range
-                    r = 0.2 + 0.5 * (1 - t)
-                    g = 0.2 + 0.5 * (1 - t)
-                    b = 0.9
+                    t = min(abs(c) / (c_range * 0.5), 1.0)
+                    r = 0.1 + 0.3 * (1 - t)
+                    g = 0.3 + 0.4 * (1 - t)
+                    b = 1.0
                 elif c > 0:
-                    # Červený gradient
-                    t = c / c_range
-                    r = 0.9
-                    g = 0.2 + 0.5 * (1 - t)
-                    b = 0.2 + 0.5 * (1 - t)
+                    t = min(c / (c_range * 0.5), 1.0)
+                    r = 1.0
+                    g = 0.3 + 0.4 * (1 - t)
+                    b = 0.1 + 0.3 * (1 - t)
                 else:
-                    # Biela pre c=0
-                    r = g = b = 1.0
+                    r, g, b = 1.0, 1.0, 0.5
 
-                # Alpha gradient - vzdialenejšie body priehľadnejšie
                 distance = abs(c)
-                alpha = max(0.3, 1.0 - (distance / c_range) * 0.6)
+                alpha = max(0.4, 1.0 - (distance / c_range) * 0.6)
 
                 self.persistent_vectors.append({
                     'vec': result,
                     'c1': c,
-                    'c2': 0.0,  # Pre priamku c2 je vždy 0
+                    'c2': 0.0,
                     'color': (r, g, b),
-                    'alpha': alpha
+                    'alpha': alpha,
+                    'is_persistent': True
                 })
 
             print(f"✨ Zobrazených {len(self.persistent_vectors)} bodov na priamke")
 
         else:
-            # ========================================
-            # PRÍPAD 2: NEZÁVISLÉ VEKTORY - ROVINA (pôvodný kód)
-            # ========================================
+            # PRÍPAD 2: NEZÁVISLÉ VEKTORY - ROVINA (OBMEDZENÁ)
             print("🟢 Nezávislé vektory - kreslím rovinu!")
 
-            grid_range = 10
-            step = 1
+            grid_range = 10  # ZMENENÉ z 50 na 10
+            grid_range_x = 18
+            step = 1.0
 
-            for grid_x in range(-grid_range, grid_range, step):
-                for grid_y in range(-grid_range, grid_range, step):
+            for grid_x in range(-grid_range_x, grid_range_x + 1, int(step)):
+                for grid_y in range(-grid_range, grid_range + 1, int(step)):
                     target_x = grid_x + 0.5
                     target_y = grid_y + 0.5
 
@@ -3613,32 +3757,52 @@ class SpanAnimationController:
 
                     result = [c1 * v1[i] + c2 * v2[i] for i in range(len(v1))]
 
-                    # Farebný gradient
+                    # Farebný gradient podľa uhla
                     angle = math.atan2(target_y, target_x)
                     hue = (angle + math.pi) / (2 * math.pi)
-                    r = 0.9 * (1 - hue) + 0.2 * hue
-                    g = 0.2 * (1 - hue) + 0.9 * hue
-                    b = 0.9
 
-                    # Alpha gradient
+                    h = hue * 6
+                    i_h = int(h) % 6
+                    f = h - int(h)
+
+                    if i_h == 0:
+                        r, g, b = 1, f, 0
+                    elif i_h == 1:
+                        r, g, b = 1 - f, 1, 0
+                    elif i_h == 2:
+                        r, g, b = 0, 1, f
+                    elif i_h == 3:
+                        r, g, b = 0, 1 - f, 1
+                    elif i_h == 4:
+                        r, g, b = f, 0, 1
+                    else:
+                        r, g, b = 1, 0, 1 - f
+
+                    r = 0.2 + r * 0.8
+                    g = 0.2 + g * 0.8
+                    b = 0.2 + b * 0.8
+
                     distance = math.sqrt(target_x ** 2 + target_y ** 2)
                     max_distance = grid_range * math.sqrt(2)
-                    alpha = max(0.3, 1.0 - (distance / max_distance) * 0.6)
+                    alpha = max(0.3, 1.0 - (distance / max_distance) * 0.7)
 
                     self.persistent_vectors.append({
                         'vec': result,
                         'c1': c1,
                         'c2': c2,
                         'color': (r, g, b),
-                        'alpha': alpha
+                        'alpha': alpha,
+                        'is_persistent': True
                     })
 
-            print(f"✨ Zobrazených {len(self.persistent_vectors)} kombinácií")
+            print(
+                f"✨ Zobrazených {len(self.persistent_vectors)} kombinácií (mriežka {grid_range * 2 + 1}x{grid_range * 2 + 1})")
+
+        # NOVÉ: Ulož ideálny zoom level
+        self.locked_ortho_scale = 6.0  # Vhodná hodnota pre grid_range=10
 
     def setup_span(self, vector1, vector2):
-        """Nastaví span animáciu pre dva vektory - BEZ ÚPRAV VEKTOROV"""
-        import numpy as np
-
+        """Nastaví span animáciu pre dva vektory"""
         v1 = np.array(vector1, dtype=float)
         v2 = np.array(vector2, dtype=float)
 
@@ -3652,6 +3816,12 @@ class SpanAnimationController:
             self.basis_vectors = [v1.tolist(), v2.tolist()]
             self.circle_radius = 1.5
             self.num_circle_points = 15
+
+            # NOVÉ: Pre závislé vektory - generuj body pozdĺž priamky
+            self.line_points = []
+            self.line_direction = 1  # 1 = dopredu, -1 = dozadu
+            self.line_step = 0.5  # Krok pozdĺž priamky
+            self.current_line_position = 0.0
         else:
             # NEZÁVISLÉ VEKTORY - span je rovina
             print("✓ Vektory sú lineárne nezávislé - span je celá rovina!")
@@ -3667,7 +3837,7 @@ class SpanAnimationController:
         self.current_circle_index = 0
         self.persistent_vectors = []
 
-        # Generovanie bodov kruhu
+        # Generovanie bodov kruhu (pre nezávislé)
         self.circle_points = []
         for i in range(self.num_circle_points):
             angle = (2 * math.pi * i) / self.num_circle_points
@@ -3675,33 +3845,45 @@ class SpanAnimationController:
             c2 = self.circle_radius * math.sin(angle)
             self.circle_points.append((c1, c2))
 
-        # Prvý krok - zobraz oba vektory
-        self.combinations = [
-            {'c1': 1.0, 'c2': 1.0}
-        ]
+        # Prvý krok
+        if are_dependent:
+            self.combinations = [{'c1': 0.5, 'c2': 0.0}]  # Začni s malou hodnotou
+            self.current_line_position = 0.5
+        else:
+            self.combinations = [{'c1': 1.0, 'c2': 1.0}]
 
         print(f"Pôvodné: v1={vector1}, v2={vector2}")
         print(f"Použité: v1={v1.tolist()}, v2={v2.tolist()}")
         print(f"✓ Span nastavený: {self.num_circle_points} bodov, polomer {self.circle_radius}")
+
     def next_step(self):
         """Prejdi na ďalší krok - s možnosťou zachovania výsledného vektora"""
-        # ZACHOVANÉ: Pred prechodom na nový krok, s 30% šancou ulož aktuálny výsledný vektor
-        # ALE len od kroku 1 ďalej (nie z kroku 0, kde nie je fialový vektor)
+        are_dependent = self.are_vectors_dependent()
+
+        # ZACHOVANÉ: Pred prechodom na nový krok, s 40% šancou ulož aktuálny výsledný vektor
         if self.current_step >= 1 and random.random() < self.persistence_chance:
-            # Vypočítaj aktuálny výsledný vektor
             current_comb = self.combinations[self.current_step]
             c1, c2 = current_comb['c1'], current_comb['c2']
             v1, v2 = self.basis_vectors
 
-            result = [c1 * v1[i] + c2 * v2[i] for i in range(len(v1))]
-
-            # Ulož ho ako perzistentný vektor s mierne inou farbou
-            self.persistent_vectors.append({
-                'vec': result,
-                'c1': c1,
-                'c2': c2
-            })
-            print(f"✓ Vektor zachovaný! (c1={c1:.2f}, c2={c2:.2f})")
+            # Pre závislé: použij len c1
+            if are_dependent:
+                result = [c1 * v1[i] for i in range(len(v1))]
+                self.persistent_vectors.append({
+                    'vec': result,
+                    'c1': c1,
+                    'c2': 0.0
+                })
+                print(f"✓ Vektor zachovaný! (c={c1:.2f})")
+            else:
+                # Pre nezávislé: pôvodná logika
+                result = [c1 * v1[i] + c2 * v2[i] for i in range(len(v1))]
+                self.persistent_vectors.append({
+                    'vec': result,
+                    'c1': c1,
+                    'c2': c2
+                })
+                print(f"✓ Vektor zachovaný! (c1={c1:.2f}, c2={c2:.2f})")
 
         self.current_step += 1
 
@@ -3714,34 +3896,65 @@ class SpanAnimationController:
                 v1 = self.basis_vectors[0]
                 v2 = self.basis_vectors[1]
 
-                if not self.circle_points:
-                    print("CHYBA: Kruh nebol vygenerovaný!")
-                    return False
+                if are_dependent:
+                    # ========================================
+                    # OPRAVENÉ: PLYNULÝ POHYB PRE ZÁVISLÉ VEKTORY
+                    # ========================================
 
-                self.current_circle_index = (self.current_circle_index + 1) % len(self.circle_points)
+                    # Pridaj malý krok k aktuálnej pozícii
+                    step_size = random.uniform(0.3, 0.8)  # Variabilný krok
+                    self.current_line_position += step_size * self.line_direction
 
-                circle_point = self.circle_points[self.current_circle_index]
-                base_c1, base_c2 = circle_point
+                    # Ak sme príliš ďaleko, otoč smer
+                    max_distance = 4.0
+                    if abs(self.current_line_position) > max_distance:
+                        self.line_direction *= -1
+                        self.current_line_position += step_size * self.line_direction * 2
 
-                random_radius_factor = random.uniform(0.3, 1.2)
-                scaled_c1 = base_c1 * random_radius_factor
-                scaled_c2 = base_c2 * random_radius_factor
+                    # Občas (10%) zmeň smer pre zaujímavejšiu animáciu
+                    if random.random() < 0.1:
+                        self.line_direction *= -1
 
-                angle_variation = random.uniform(-0.2, 0.2)
-                angle = math.atan2(scaled_c2, scaled_c1) + angle_variation
-                radius = math.sqrt(scaled_c1 ** 2 + scaled_c2 ** 2)
+                    c1 = self.current_line_position
+                    c2 = 0.0
 
-                c1 = radius * math.cos(angle)
-                c2 = radius * math.sin(angle)
+                    result_x = c1 * v1[0]
+                    result_y = c1 * v1[1]
 
-                result_x = c1 * v1[0] + c2 * v2[0]
-                result_y = c1 * v1[1] + c2 * v2[1]
+                    self.last_target_point = (result_x, result_y)
+                    self.combinations.append({'c1': c1, 'c2': c2})
 
-                self.last_target_point = (result_x, result_y)
-                self.combinations.append({'c1': c1, 'c2': c2})
+                    print(f"Krok {self.current_step}: Závislé vektory, c={c1:.2f} "
+                          f"→ ({result_x:.2f}, {result_y:.2f})")
+                else:
+                    # PRE NEZÁVISLÉ: Pôvodná logika
+                    if not self.circle_points:
+                        print("CHYBA: Kruh nebol vygenerovaný!")
+                        return False
 
-                print(f"Krok {self.current_step}: Polomer {radius:.2f} "
-                      f"→ ({result_x:.2f}, {result_y:.2f}), c1={c1:.2f}, c2={c2:.2f}")
+                    self.current_circle_index = (self.current_circle_index + 1) % len(self.circle_points)
+                    circle_point = self.circle_points[self.current_circle_index]
+                    base_c1, base_c2 = circle_point
+
+                    random_radius_factor = random.uniform(0.3, 1.2)
+                    scaled_c1 = base_c1 * random_radius_factor
+                    scaled_c2 = base_c2 * random_radius_factor
+
+                    angle_variation = random.uniform(-0.2, 0.2)
+                    angle = math.atan2(scaled_c2, scaled_c1) + angle_variation
+                    radius = math.sqrt(scaled_c1 ** 2 + scaled_c2 ** 2)
+
+                    c1 = radius * math.cos(angle)
+                    c2 = radius * math.sin(angle)
+
+                    result_x = c1 * v1[0] + c2 * v2[0]
+                    result_y = c1 * v1[1] + c2 * v2[1]
+
+                    self.last_target_point = (result_x, result_y)
+                    self.combinations.append({'c1': c1, 'c2': c2})
+
+                    print(f"Krok {self.current_step}: Polomer {radius:.2f} "
+                          f"→ ({result_x:.2f}, {result_y:.2f}), c1={c1:.2f}, c2={c2:.2f}")
 
         self.animating = True
         self.animation_progress = 0.0
@@ -3750,9 +3963,8 @@ class SpanAnimationController:
     def prev_step(self):
         """Vráť sa na predošlý krok"""
         if self.current_step > 0:
-            # NOVÉ: Odstráň posledný zachovaný vektor ak existuje
+            # Odstráň posledný zachovaný vektor ak existuje
             if self.persistent_vectors:
-                # Skontroluj či posledný zachovaný vektor patrí k aktuálnemu kroku
                 last_persistent = self.persistent_vectors[-1]
                 current_comb = self.combinations[self.current_step]
 
@@ -3782,11 +3994,11 @@ class SpanAnimationController:
                 self.animation_progress = 1.0
                 self.animating = False
 
-                # NOVÉ: Ak je auto_play aktívne, resetuj timer
+                # Ak je auto_play aktívne, resetuj timer
                 if self.auto_play:
                     self.auto_play_timer = 0.0
 
-        # NOVÉ: Automatické krokovanie
+        # Automatické krokovanie
         if self.auto_play and not self.animating:
             self.auto_play_timer += dt
             if self.auto_play_timer >= self.auto_play_delay:
@@ -3794,12 +4006,12 @@ class SpanAnimationController:
                 self.auto_play_timer = 0.0
 
     def get_current_vectors(self):
-        """Vráti aktuálne vektory na vykreslenie s interpoláciou - S DYNAMICKÝMI LABELMI"""
+        """Vráti aktuálne vektory na vykreslenie s interpoláciou"""
         if not self.active or not self.basis_vectors:
             return []
 
         # Ak máme plno perzistentných vektorov (režim "show all"), zobraz len tie
-        if len(self.persistent_vectors) > 50:  # Threshold pre "burst" režim
+        if len(self.persistent_vectors) > 50:
             vectors = []
             for pv in self.persistent_vectors:
                 vectors.append({
@@ -3808,11 +4020,13 @@ class SpanAnimationController:
                     'color': pv.get('color', (0.6, 0.2, 0.6)),
                     'alpha': pv.get('alpha', 0.4),
                     'label': f"c1={pv['c1']:.1f}, c2={pv['c2']:.1f}",
-                    'show_label': False  # ❌ BURST režim - bez labelov
+                    'show_label': False,
+                    'is_persistent': True
                 })
             return vectors
 
         v1, v2 = self.basis_vectors
+        are_dependent = self.are_vectors_dependent()
 
         current_comb = self.combinations[self.current_step]
         c1_target = current_comb['c1']
@@ -3822,26 +4036,61 @@ class SpanAnimationController:
         if self.animating and self.current_step > 0:
             prev_comb = self.combinations[self.current_step - 1]
             t = self.animation_progress
-            t = t * t * (3.0 - 2.0 * t)
+            t = t * t * (3.0 - 2.0 * t)  # Smooth interpolation
 
             c1 = prev_comb['c1'] + (c1_target - prev_comb['c1']) * t
             c2 = prev_comb['c2'] + (c2_target - prev_comb['c2']) * t
         else:
             c1, c2 = c1_target, c2_target
 
+        vectors = []
+
+        # ========================================
+        # PRÍPAD 1: ZÁVISLÉ VEKTORY - PRIAMKA
+        # ========================================
+        if are_dependent:
+            scaled_v1 = [c1 * x for x in v1]
+
+            # ZACHOVANÉ VEKTORY - fialové stopy (NAJPRV - VZADU)
+            for persistent in self.persistent_vectors:
+                vectors.append({
+                    'vec': persistent['vec'],
+                    'offset': [0, 0, 0],
+                    'color': (0.6, 0.2, 0.6),
+                    'alpha': 0.4,
+                    'label': f"c={persistent['c1']:.1f}",
+                    'show_label': False,
+                    'is_persistent': True  # PRIDANÉ
+                })
+
+            # AKTUÁLNY VEKTOR - oranžový (NAKONIEC - VPREDU)
+            vectors.append({
+                'vec': scaled_v1,
+                'offset': [0, 0, 0],
+                'color': (1.0, 0.5, 0.2),
+                'alpha': 1.0,
+                'label': f'{c1:.2f}·v',
+                'show_label': True,
+                'is_persistent': False  # PRIDANÉ
+            })
+
+            return vectors
+
+        # ========================================
+        # PRÍPAD 2: NEZÁVISLÉ VEKTORY - ROVINA
+        # ========================================
         scaled_v1 = [c1 * x for x in v1]
         scaled_v2 = [c2 * x for x in v2]
 
-        vectors = []
-
-        # Oranžový vektor (vždy od originu) - S DYNAMICKÝM LABELOM
+        # Oranžový vektor (vždy od originu)
         vectors.append({
             'vec': scaled_v1,
             'offset': [0, 0, 0],
             'color': (1.0, 0.5, 0.2),
             'alpha': 1.0,
             'label': f'{c1:.2f}·v1',
-            'show_label': True  # ✅ Oranžový má label
+            'show_label': True,
+            'is_persistent': False  # PRIDANÉ
         })
 
         # ANIMÁCIA OFFSETU modrého vektora
@@ -3854,27 +4103,29 @@ class SpanAnimationController:
         else:
             blue_offset = scaled_v1
 
-        # Modrý vektor - S DYNAMICKÝM LABELOM
+        # Modrý vektor
         vectors.append({
             'vec': scaled_v2,
             'offset': blue_offset,
             'color': (0.2, 0.5, 1.0),
             'alpha': 1.0,
             'label': f'{c2:.2f}·v2',
-            'show_label': True  # ✅ Modrý má label
+            'show_label': True,
+            'is_persistent': False  # PRIDANÉ
         })
 
         # Od kroku 1 ďalej zobraz fialový výsledok a zachované vektory
         if self.current_step >= 1:
-            # ZACHOVANÉ VEKTORY - bez labelov
-            for i, persistent in enumerate(self.persistent_vectors):
+            # ZACHOVANÉ VEKTORY - bez labelov (VZADU)
+            for persistent in self.persistent_vectors:
                 vectors.append({
                     'vec': persistent['vec'],
                     'offset': [0, 0, 0],
                     'color': (0.6, 0.2, 0.6),
                     'alpha': 0.4,
                     'label': f"c1={persistent['c1']:.1f}, c2={persistent['c2']:.1f}",
-                    'show_label': False  # ❌ Staré nemajú label
+                    'show_label': False,
+                    'is_persistent': True  # PRIDANÉ
                 })
 
             # Výsledná kombinácia - aktuálna (tmavo fialová)
@@ -3891,7 +4142,8 @@ class SpanAnimationController:
                 'color': (0.5, 0.0, 0.5),
                 'alpha': purple_alpha,
                 'label': f'{c1:.2f}·v1 + {c2:.2f}·v2',
-                'show_label': False  # ❌ FIALOVÝ NEMÁ LABEL
+                'show_label': False,
+                'is_persistent': False  # PRIDANÉ
             })
 
         return vectors
@@ -3904,11 +4156,19 @@ class SpanAnimationController:
         self.current_step = 0
         self.circle_points = []
         self.current_circle_index = 0
-        self.persistent_vectors = []  # OPRAVA: Vyčisti aj persistent vektory
+        self.persistent_vectors = []
         self.animating = False
         self.animation_progress = 0.0
-        self.auto_play = False  # NOVÉ: Vypni aj auto-play
+        self.auto_play = False
         self.auto_play_timer = 0.0
+        self.line_points = []
+        self.line_direction = 1
+        self.line_step = 0.5
+        self.current_line_position = 0.0
+
+        # NOVÉ: Reset show_all režimu
+        self.show_all_mode = False
+        self.locked_ortho_scale = None
 
 class Application:
     """Hlavná aplikácia - KOMPLETNE AKTUALIZOVANÁ"""
@@ -4983,6 +5243,11 @@ class Application:
 
             if event.key == pygame.K_o:
                 self.vector_manager.span_controller.show_all_combinations()
+                # Nastav kameru na správny zoom
+                if self.vector_manager.span_controller.locked_ortho_scale:
+                    self.camera.ortho_scale = self.vector_manager.span_controller.locked_ortho_scale
+                    self.camera.pan_offset_x = 0
+                    self.camera.pan_offset_y = 0
                 return
 
             if event.key == pygame.K_p:
@@ -5274,18 +5539,39 @@ class Application:
                         self.matrix_active_cell = (r, c)
                         return
 
-        # Camera controls
+        # Camera controls - na konci handle_mouse_down
         if event.button == 1:
-            self.camera.rotating = not self.view_2d_mode
-            self.camera.panning = self.view_2d_mode
+            # NOVÉ: Blokuj v show_all režime
+            if not self.vector_manager.span_controller.show_all_mode:
+                self.camera.rotating = not self.view_2d_mode
+                self.camera.panning = self.view_2d_mode
             self.camera.last_mouse = event.pos
         elif event.button == 3:
-            self.camera.panning = True
+            # NOVÉ: Blokuj v show_all režime
+            if not self.vector_manager.span_controller.show_all_mode:
+                self.camera.panning = True
             self.camera.last_mouse = event.pos
         elif event.button == 4:  # scroll up
-            self.camera.zoom_in(self.view_2d_mode)
+            span_ctrl = self.vector_manager.span_controller
+            if span_ctrl.show_all_mode and span_ctrl.locked_ortho_scale:
+                # Obmedzený zoom
+                new_scale = self.camera.ortho_scale / 1.1
+                min_scale = span_ctrl.locked_ortho_scale * 0.5
+                if new_scale >= min_scale:
+                    self.camera.ortho_scale = new_scale
+            else:
+                self.camera.zoom_in(self.view_2d_mode)
+
         elif event.button == 5:  # scroll down
-            self.camera.zoom_out(self.view_2d_mode)
+            span_ctrl = self.vector_manager.span_controller
+            if span_ctrl.show_all_mode and span_ctrl.locked_ortho_scale:
+                # Obmedzený zoom
+                new_scale = self.camera.ortho_scale * 1.1
+                max_scale = span_ctrl.locked_ortho_scale * 1.5
+                if new_scale <= max_scale:
+                    self.camera.ortho_scale = new_scale
+            else:
+                self.camera.zoom_out(self.view_2d_mode)
 
     def generate_random_matrix(self):
         """Generuje náhodnú maticu"""
@@ -5335,6 +5621,10 @@ class Application:
         dx = event.pos[0] - self.camera.last_mouse[0]
         dy = event.pos[1] - self.camera.last_mouse[1]
         self.camera.last_mouse = event.pos
+
+        # NOVÉ: Blokuj pohyb kamery v show_all režime
+        if self.vector_manager.span_controller.show_all_mode:
+            return
 
         if self.view_2d_mode and self.camera.panning:
             self.camera.handle_panning_2d(dx, dy)
@@ -5623,28 +5913,96 @@ class Application:
         if self.vector_manager.span_controller.active:
             vectors_to_draw = self.vector_manager.span_controller.get_current_vectors()
 
+            # Rozdeľ na perzistentné (vzadu) a aktuálne (vpredu)
+            persistent_vectors = [v for v in vectors_to_draw if v.get('is_persistent', False)]
+            current_vectors = [v for v in vectors_to_draw if not v.get('is_persistent', False)]
+
             if self.vectors_as_points:
-                for v in vectors_to_draw:
+                # 1. Najprv kresli perzistentné (vzadu, Z = 0.05)
+                for v in persistent_vectors:
                     vec = v['vec']
                     offset = v.get('offset', [0, 0])
-                    v_color = v.get('color', color)
+                    v_color = v.get('color', (0.6, 0.2, 0.6))
+                    v_alpha = v.get('alpha', 0.4)
+                    base_radius = 0.07
+                    radius = base_radius * self.camera.ortho_scale / 6.5
+
+                    pos = [vec[0] + offset[0], vec[1] + offset[1] if len(vec) > 1 else offset[1], 0.05]
+                    self.vector_renderer.draw_circle_2d(pos, radius=radius, color=v_color, alpha=v_alpha)
+
+                # 2. Potom kresli aktuálne (vpredu, Z = 0.3)
+                for v in current_vectors:
+                    vec = v['vec']
+                    offset = v.get('offset', [0, 0])
+                    v_color = v.get('color', (1, 1, 1))
                     v_alpha = v.get('alpha', 1.0)
                     base_radius = 0.07
                     radius = base_radius * self.camera.ortho_scale / 6.5
 
-                    if v_alpha < 1.0:
-                        glDepthMask(GL_FALSE)
-
-                    pos = [vec[0] + offset[0], vec[1] + offset[1] if len(vec) > 1 else offset[1], 0.2]
+                    pos = [vec[0] + offset[0], vec[1] + offset[1] if len(vec) > 1 else offset[1], 0.3]
                     self.vector_renderer.draw_circle_2d(pos, radius=radius, color=v_color, alpha=v_alpha)
 
-                    if v_alpha < 1.0:
-                        glDepthMask(GL_TRUE)
             else:
-                for v in vectors_to_draw:
+                # Šípky - rovnaká logika
+
+                # 1. Najprv VŠETKY ČIARY perzistentných (vzadu, nízke Z)
+                for v in persistent_vectors:
                     vec = v['vec']
                     offset = v.get('offset', [0, 0])
-                    v_color = v.get('color', color)
+                    v_color = v.get('color', (0.6, 0.2, 0.6))
+                    v_alpha = v.get('alpha', 0.4)
+
+                    x = vec[0]
+                    y = vec[1] if len(vec) > 1 else 0
+                    ox = offset[0]
+                    oy = offset[1] if len(offset) > 1 else 0
+
+                    vec_length = math.sqrt(x * x + y * y)
+                    if vec_length > 0.1:
+                        angle = math.atan2(y, x)
+
+                        # Skráť čiaru o veľkosť šípky
+                        line_end_x = ox + x - 0.2 * math.cos(angle)
+                        line_end_y = oy + y - 0.2 * math.sin(angle)
+
+                        glLineWidth(4)
+                        glEnable(GL_BLEND)
+                        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+                        glColor4f(v_color[0], v_color[1], v_color[2], v_alpha)
+
+                        glBegin(GL_LINES)
+                        glVertex3f(ox, oy, 0.01)  # Nízke Z pre čiary
+                        glVertex3f(line_end_x, line_end_y, 0.01)
+                        glEnd()
+
+                        glDisable(GL_BLEND)
+
+                # 2. Potom VŠETKY ŠÍPKY perzistentných (vyššie Z)
+                for v in persistent_vectors:
+                    vec = v['vec']
+                    offset = v.get('offset', [0, 0])
+                    v_color = v.get('color', (0.6, 0.2, 0.6))
+                    v_alpha = v.get('alpha', 0.4)
+
+                    x = vec[0]
+                    y = vec[1] if len(vec) > 1 else 0
+                    ox = offset[0]
+                    oy = offset[1] if len(offset) > 1 else 0
+
+                    vec_length = math.sqrt(x * x + y * y)
+                    if vec_length > 0.1:
+                        angle = math.atan2(y, x)
+
+                        # Šípka na pôvodnom konci vektora
+                        self.vector_renderer.draw_triangle_arrowhead_2d(
+                            ox + x, oy + y, angle, 1.0, v_color, v_alpha, z=0.05
+                        )
+
+                # 3. VŠETKY ČIARY aktuálnych (stredné Z)
+                for v in current_vectors:
+                    vec = v['vec']
+                    offset = v.get('offset', [0, 0])
+                    v_color = v.get('color', (1, 1, 1))
                     v_alpha = v.get('alpha', 1.0)
 
                     x = vec[0]
@@ -5652,46 +6010,60 @@ class Application:
                     ox = offset[0]
                     oy = offset[1] if len(offset) > 1 else 0
 
-                    glLineWidth(6)
-
-                    if v_alpha < 1.0:
-                        glEnable(GL_BLEND)
-                        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-                        glColor4f(v_color[0], v_color[1], v_color[2], v_alpha)
-                    else:
-                        glColor3f(*v_color)
-
-                    glBegin(GL_LINES)
-                    glVertex2f(ox, oy)
-                    glVertex2f(ox + x, oy + y)
-                    glEnd()
-
-                    # Šípka
                     vec_length = math.sqrt(x * x + y * y)
                     if vec_length > 0.1:
                         angle = math.atan2(y, x)
-                        arrow_size = 0.3
-                        px, py = ox + x, oy + y
+
+                        # Skráť čiaru o veľkosť šípky
+                        line_end_x = ox + x - 0.2 * math.cos(angle)
+                        line_end_y = oy + y - 0.2 * math.sin(angle)
+
+                        glLineWidth(6)
+
+                        if v_alpha < 1.0:
+                            glEnable(GL_BLEND)
+                            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+                            glColor4f(v_color[0], v_color[1], v_color[2], v_alpha)
+                        else:
+                            glColor3f(*v_color)
+
                         glBegin(GL_LINES)
-                        glVertex2f(px, py)
-                        glVertex2f(px - arrow_size * math.cos(angle - 0.3),
-                                   py - arrow_size * math.sin(angle - 0.3))
-                        glVertex2f(px, py)
-                        glVertex2f(px - arrow_size * math.cos(angle + 0.3),
-                                   py - arrow_size * math.sin(angle + 0.3))
+                        glVertex3f(ox, oy, 0.2)  # Stredné Z pre čiary
+                        glVertex3f(line_end_x, line_end_y, 0.2)
                         glEnd()
 
-                    if v_alpha < 1.0:
-                        glDisable(GL_BLEND)
+                        if v_alpha < 1.0:
+                            glDisable(GL_BLEND)
 
-            self.draw_vector_labels_2d(vectors_to_draw)
-            return  # Koniec pre span
+                # 4. VŠETKY ŠÍPKY aktuálnych (najvyššie Z)
+                for v in current_vectors:
+                    vec = v['vec']
+                    offset = v.get('offset', [0, 0])
+                    v_color = v.get('color', (1, 1, 1))
+                    v_alpha = v.get('alpha', 1.0)
 
-        # ===== ANIMATION CONTROLLER - PÔVODNÝ KÓD =====
+                    x = vec[0]
+                    y = vec[1] if len(vec) > 1 else 0
+                    ox = offset[0]
+                    oy = offset[1] if len(offset) > 1 else 0
+
+                    vec_length = math.sqrt(x * x + y * y)
+                    if vec_length > 0.1:
+                        angle = math.atan2(y, x)
+
+                        # Šípka na pôvodnom konci
+                        self.vector_renderer.draw_triangle_arrowhead_2d(
+                            ox + x, oy + y, angle, 1.0, v_color, v_alpha, z=0.3
+                        )
+
+                # Labely
+                self.draw_vector_labels_2d(current_vectors)
+                return  # Koniec pre span
+        # ===== ANIMATION CONTROLLER =====
         if self.vector_manager.animation_controller.current_operation:
             vectors_to_draw = self.vector_manager.animation_controller.get_vectors_to_draw()
 
-            # OPRAVA: Zoraď vektory - najprv priesvitné (alpha < 1.0), potom plne viditeľné
+            # Zoraď vektory - najprv priesvitné, potom plne viditeľné
             vectors_sorted = sorted(vectors_to_draw, key=lambda v: v.get('alpha', 1.0))
 
             if self.vectors_as_points:
@@ -5703,7 +6075,6 @@ class Application:
                     base_radius = 0.07
                     radius = base_radius * self.camera.ortho_scale / 6.5
 
-                    # Vypni depth write pre priesvitné
                     if v_alpha < 1.0:
                         glDepthMask(GL_FALSE)
 
@@ -5711,7 +6082,6 @@ class Application:
                         pos = [vec[0] + offset[0], vec[1] + offset[1] if len(vec) > 1 else offset[1], 0.2]
                         self.vector_renderer.draw_circle_2d(pos, radius=radius, color=v_color, alpha=v_alpha)
                     else:
-                        # Matica - každý riadok je bod
                         row_offsets = v.get('row_offsets', None)
 
                         for i, row in enumerate(vec):
@@ -5728,7 +6098,6 @@ class Application:
                             pos = [x + ox, y + oy, 0.2]
                             self.vector_renderer.draw_circle_2d(pos, radius=radius, color=v_color, alpha=v_alpha)
 
-                    # Zapni depth write späť
                     if v_alpha < 1.0:
                         glDepthMask(GL_TRUE)
 
@@ -5740,7 +6109,6 @@ class Application:
                     v_color = v.get('color', color)
                     v_alpha = v.get('alpha', 1.0)
 
-                    # Vypni depth write pre priesvitné
                     if v_alpha < 1.0:
                         glDepthMask(GL_FALSE)
 
@@ -5751,56 +6119,15 @@ class Application:
                         ox = offset[0]
                         oy = offset[1] if len(offset) > 1 else 0
 
-                        glLineWidth(6)
-
-                        # Podpora pre alpha v 2D
-                        if v_alpha < 1.0:
-                            glEnable(GL_BLEND)
-                            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-                            glColor4f(v_color[0], v_color[1], v_color[2], v_alpha)
-                        else:
-                            glColor3f(*v_color)
-
-                        glBegin(GL_LINES)
-                        glVertex2f(ox, oy)
-                        glVertex2f(ox + x, oy + y)
-                        glEnd()
-
-                        # Šípka len ak je vektor dosť veľký
                         vec_length = math.sqrt(x * x + y * y)
                         if vec_length > 0.1:
                             angle = math.atan2(y, x)
-                            arrow_size = 0.3
-                            px, py = ox + x, oy + y
-                            glBegin(GL_LINES)
-                            glVertex2f(px, py)
-                            glVertex2f(px - arrow_size * math.cos(angle - 0.3),
-                                       py - arrow_size * math.sin(angle - 0.3))
-                            glVertex2f(px, py)
-                            glVertex2f(px - arrow_size * math.cos(angle + 0.3),
-                                       py - arrow_size * math.sin(angle + 0.3))
-                            glEnd()
 
-                        if v_alpha < 1.0:
-                            glDisable(GL_BLEND)
+                            # Skráť čiaru o veľkosť šípky
+                            line_end_x = ox + x - 0.2 * math.cos(angle)
+                            line_end_y = oy + y - 0.2 * math.sin(angle)
 
-                    else:
-                        # Matica - každý riadok je vektor
-                        row_offsets = v.get('row_offsets', None)
-
-                        for i, row in enumerate(vec):
-                            x = row[0]
-                            y = row[1] if len(row) > 1 else 0
-
-                            # Použiť row_offsets ak existujú
-                            if row_offsets and i < len(row_offsets):
-                                ox = row_offsets[i][0]
-                                oy = row_offsets[i][1] if len(row_offsets[i]) > 1 else 0
-                            else:
-                                ox = offset[0]
-                                oy = offset[1] if len(offset) > 1 else 0
-
-                            glLineWidth(3)
+                            glLineWidth(6)
 
                             if v_alpha < 1.0:
                                 glEnable(GL_BLEND)
@@ -5810,29 +6137,63 @@ class Application:
                                 glColor3f(*v_color)
 
                             glBegin(GL_LINES)
-                            glVertex2f(ox, oy)
-                            glVertex2f(ox + x, oy + y)
+                            glVertex3f(ox, oy, 0.3)
+                            glVertex3f(line_end_x, line_end_y, 0.3)
                             glEnd()
 
-                            # Šípka len ak je vektor dosť veľký
-                            vec_length = math.sqrt(x * x + y * y)
-                            if vec_length > 0.1:
-                                angle = math.atan2(y, x)
-                                arrow_size = 0.3
-                                px, py = ox + x, oy + y
-                                glBegin(GL_LINES)
-                                glVertex2f(px, py)
-                                glVertex2f(px - arrow_size * math.cos(angle - 0.3),
-                                           py - arrow_size * math.sin(angle - 0.3))
-                                glVertex2f(px, py)
-                                glVertex2f(px - arrow_size * math.cos(angle + 0.3),
-                                           py - arrow_size * math.sin(angle + 0.3))
-                                glEnd()
+                            # Šípka na konci
+                            self.vector_renderer.draw_triangle_arrowhead_2d(
+                                ox + x, oy + y, angle, 1.0, v_color, v_alpha, z=0.3
+                            )
 
                             if v_alpha < 1.0:
                                 glDisable(GL_BLEND)
 
-                    # Zapni depth write späť
+                    else:
+                        # Matica - každý riadok je vektor
+                        row_offsets = v.get('row_offsets', None)
+
+                        for i, row in enumerate(vec):
+                            x = row[0]
+                            y = row[1] if len(row) > 1 else 0
+
+                            if row_offsets and i < len(row_offsets):
+                                ox = row_offsets[i][0]
+                                oy = row_offsets[i][1] if len(row_offsets[i]) > 1 else 0
+                            else:
+                                ox = offset[0]
+                                oy = offset[1] if len(offset) > 1 else 0
+
+                            vec_length = math.sqrt(x * x + y * y)
+                            if vec_length > 0.1:
+                                angle = math.atan2(y, x)
+
+                                # Skráť čiaru o veľkosť šípky
+                                line_end_x = ox + x - 0.2 * math.cos(angle)
+                                line_end_y = oy + y - 0.2 * math.sin(angle)
+
+                                glLineWidth(6)
+
+                                if v_alpha < 1.0:
+                                    glEnable(GL_BLEND)
+                                    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+                                    glColor4f(v_color[0], v_color[1], v_color[2], v_alpha)
+                                else:
+                                    glColor3f(*v_color)
+
+                                glBegin(GL_LINES)
+                                glVertex3f(ox, oy, 0.3)
+                                glVertex3f(line_end_x, line_end_y, 0.3)
+                                glEnd()
+
+                                # Šípka na konci
+                                self.vector_renderer.draw_triangle_arrowhead_2d(
+                                    ox + x, oy + y, angle, 1.0, v_color, v_alpha, z=0.3
+                                )
+
+                                if v_alpha < 1.0:
+                                    glDisable(GL_BLEND)
+
                     if v_alpha < 1.0:
                         glDepthMask(GL_TRUE)
 
