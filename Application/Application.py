@@ -7,7 +7,6 @@ Veľké bloky kódu sú extrahované do mixin tried:
 """
 
 from Configurations.Colors import Colors
-from Rendering.MathRenderer import MathRenderer
 from VectorStuff.VectorManager import VectorManager
 from VectorStuff.VectorRenderer import VectorRenderer
 from Handler.InputHandler import InputHandler
@@ -21,12 +20,11 @@ from Rendering.AxesRenderer import AxesRenderer
 from Controllers.TransformationController import TransformationController
 
 from Application.BazaInputScreen import BazaInputMixin
-from Application.VectorDrawing import VectorDrawingMixin
+from VectorStuff.VectorDrawing import VectorDrawingMixin
 from Application.MathDisplay import MathDisplayMixin
 
 import math
 import pygame
-import numpy as np
 from pygame.locals import *
 from OpenGL.GL import *
 
