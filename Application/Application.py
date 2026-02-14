@@ -1912,7 +1912,7 @@ class Application:
 
                 glEnable(GL_BLEND)
                 glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-                glLineWidth(2.0)
+                glLineWidth(8.0)
 
                 # Štýl čiar - prerušované čiary simulované krátkymi segmentmi
                 dash_length = 0.15 * self.camera.ortho_scale / 6.0
@@ -1920,13 +1920,14 @@ class Application:
                 # Horizontálna čiara (x-komponent) - zelená
                 # Od offsetu po (end_x, oy) - ukazuje x-zložku
                 if abs(vx) > 0.01:
-                    glColor4f(0.2, 0.85, 0.2, line_alpha)
+
+                    glColor4f(0.85, 0.2, 0.2, line_alpha)
                     self._draw_dashed_line_2d(ox, oy, end_x, oy, dash_length, z=0.15)
 
                 # Vertikálna čiara (y-komponent) - červená
                 # Od (end_x, oy) po (end_x, end_y) - ukazuje y-zložku
                 if abs(vy) > 0.01:
-                    glColor4f(0.85, 0.2, 0.2, line_alpha)
+                    glColor4f(0.2, 0.85, 0.2, line_alpha)
                     self._draw_dashed_line_2d(end_x, oy, end_x, end_y, dash_length, z=0.15)
 
                 glDisable(GL_BLEND)
@@ -1952,7 +1953,8 @@ class Application:
                     # Posun label pod/nad čiaru
                     y_offset = 15 if vy >= 0 else -20
                     self.ui_renderer.draw_text_2d(label_x, (mid_x_screen - 10, mid_y_screen + y_offset),
-                                                   color=(0.2, 0.85, 0.2), font_size=18)
+
+                                                  color=(0.85, 0.2, 0.2), font_size=18)
 
                 # Y-komponent label (na strede vertikálnej čiary)
                 if abs(vy) > 0.01:
@@ -1961,7 +1963,7 @@ class Application:
                     # Posun label vľavo/vpravo od čiary
                     x_offset = 10 if vx >= 0 else -35
                     self.ui_renderer.draw_text_2d(label_y, (mid_x_screen + x_offset, mid_y_screen - 8),
-                                                   color=(0.85, 0.2, 0.2), font_size=18)
+                                                  color=(0.2, 0.85, 0.2), font_size=18)
 
                 # Vektor label v zátvorkách pri konci vektora
                 vec_label_x, vec_label_y = world_to_screen(end_x, end_y)
@@ -2007,16 +2009,17 @@ class Application:
 
                     glEnable(GL_BLEND)
                     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-                    glLineWidth(2.0)
+                    glLineWidth(8.0)
 
                     dash_length = 0.15 * self.camera.ortho_scale / 6.0
 
                     if abs(vx) > 0.01:
-                        glColor4f(0.2, 0.85, 0.2, line_alpha)
+
+                        glColor4f(0.85, 0.2, 0.2, line_alpha)
                         self._draw_dashed_line_2d(ox, oy, end_x, oy, dash_length, z=0.15)
 
                     if abs(vy) > 0.01:
-                        glColor4f(0.85, 0.2, 0.2, line_alpha)
+                        glColor4f(0.2, 0.85, 0.2, line_alpha)
                         self._draw_dashed_line_2d(end_x, oy, end_x, end_y, dash_length, z=0.15)
 
                     glDisable(GL_BLEND)

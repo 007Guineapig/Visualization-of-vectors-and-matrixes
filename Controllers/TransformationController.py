@@ -40,8 +40,8 @@ class TransformationController:
         self.is_2d = True
 
         # Farby bázových vektorov
-        self.color_i = (0.2, 0.85, 0.2)   # î - zelená
-        self.color_j = (0.85, 0.2, 0.2)   # ĵ - červená
+        self.color_j = (0.2, 0.85, 0.2)   # j - zelená
+        self.color_i = (0.85, 0.2, 0.2)   # i - červená
         self.color_k = (0.2, 0.2, 0.85)   # k̂ - modrá (3D)
 
     def setup_transformation(self, matrix, is_2d=True):
