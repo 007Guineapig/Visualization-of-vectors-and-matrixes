@@ -92,7 +92,7 @@ class GridRenderer:
         end_y = math.ceil(top / display_step) * display_step
 
         glColor3f(0.5, 0.5, 0.5)
-        glLineWidth(1.0)
+        glLineWidth(0.3)
         glBegin(GL_LINES)
 
         x = start_x

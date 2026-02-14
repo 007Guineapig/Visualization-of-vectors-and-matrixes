@@ -6,7 +6,7 @@ class AxesRenderer:
     """Renderer pre súradnicové osi"""
 
     @staticmethod
-    def draw_axes_2d(ortho_scale, pan_x, pan_y, width, height, ui_renderer):
+    def draw_axes_2d(ortho_scale, pan_x, pan_y, width, height, ui_renderer, is_darkMode):
         """Nakreslí 2D osi s aspect ratio korekciou"""
         width, height = pygame.display.get_window_size()
 
@@ -25,12 +25,21 @@ class AxesRenderer:
             top = ortho_scale / aspect + pan_y
 
         # Draw axis lines
-        glLineWidth(3.0)
+        glLineWidth(1.5)
         glBegin(GL_LINES)
-        glColor3f(1, 0, 0)  # X axis
+        #glColor3f(1, 0, 0)  # X axis
+        if is_darkMode:
+            glColor3f(1, 1, 1)
+        else:
+            glColor3f(0, 0, 0)
         glVertex2f(left, 0)
         glVertex2f(right, 0)
-        glColor3f(0, 1, 0)  # Y axis
+        #glColor3f(0, 1, 0)  # Y axis
+
+        if is_darkMode:
+            glColor3f(1, 1, 1)
+        else:
+            glColor3f(0, 0, 0)
         glVertex2f(0, bottom)
         glVertex2f(0, top)
         glEnd()

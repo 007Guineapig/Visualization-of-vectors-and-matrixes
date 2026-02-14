@@ -10,6 +10,8 @@ from Configurations.Config import Config
 from Camera.Camera import Camera
 from Rendering.GridRenderer import GridRenderer
 from Rendering.AxesRenderer import AxesRenderer
+from Controllers.TransformationController import TransformationController
+from Controllers.TransformationController import TransformationController
 
 
 
@@ -50,6 +52,7 @@ class Application:
         self.vector_manager = VectorManager()
         self.input_handler = InputHandler()
         self.enhanced_ui = EnhancedUIRenderer()
+        self.transformation_controller = TransformationController()
 
         # State
         self.clock = pygame.time.Clock()
@@ -63,6 +66,7 @@ class Application:
         self.plane_grid_mode = 1  # NOVÉ: 0=vypnutý, 1=grid, 2=jemný, 3=hrubý, 4=vyplnená+grid, 5=vyplnená
         self.show_axes = True
         self.vectors_as_points = True
+        self.show_helper_lines = False
 
         # Vectors
         self.saved_baza = []
@@ -274,6 +278,7 @@ class Application:
             basis_y = 70
             std_basis_rect = pygame.Rect(basis_x, basis_y, 190, 44)
             span_rect = pygame.Rect(basis_x, basis_y + 55, 190, 44)
+            transform_rect = pygame.Rect(basis_x, basis_y + 110, 190, 44)
 
             card_x, card_y = 25, 70
             card_w, card_h = 200, 290
@@ -296,7 +301,7 @@ class Application:
                 mat_op_rects.append(rect)
 
             matrix_x = basis_x + 25
-            matrix_y = basis_y + 165
+            matrix_y = basis_y + 220
             cell_w, cell_h = 45, 34
             cell_gap = 5
 
@@ -368,6 +373,39 @@ class Application:
                             'y': start_y
                         }
                         pending_input_panel = None
+                        self.matrix_active_cell = (-1, -1)
+                        continue
+
+                    # === TRANSFORMÁCIA BÁZY TLAČIDLO ===
+                    if transform_rect.collidepoint(mx, my) and self.view_2d_mode:
+                        panel_width = 2 * (Config.MATRIX_CELL_W + Config.MATRIX_GAP)
+                        panel_height = 2 * (Config.MATRIX_CELL_H + Config.MATRIX_GAP)
+
+                        start_x = self.width // 2 - panel_width // 2
+                        start_y = self.height // 2 - panel_height // 2
+
+                        pending_input_panel = {
+                            'type': 'transformation',
+                            'operation': 'Transformácia bázy',
+                            'values': [["" for _ in range(2)] for _ in range(2)],
+                            'active_cell': (0, 0),
+                            'x': start_x,
+                            'y': start_y,
+                            'panels': [{
+                                'type': 'matrix',
+                                'rows': 2, 'cols': 2,
+                                'values': [["" for _ in range(2)] for _ in range(2)],
+                                'active_cell': (0, 0),
+                                'x': start_x,
+                                'y': start_y
+                            }],
+                            'active_panel': 0,
+                            'num_panels': 1,
+                            'symbol': None,
+                            'has_constant': False,
+                            'is_transformation': True
+                        }
+                        span_input_panel = None
                         self.matrix_active_cell = (-1, -1)
                         continue
 
@@ -756,6 +794,22 @@ class Application:
                                                 break
 
                                 if all_filled:
+                                    # === TRANSFORMÁCIA BÁZY ===
+                                    if pending_input_panel.get('is_transformation', False):
+                                        try:
+                                            panel = pending_input_panel["panels"][0]
+                                            mat = [[float(v) for v in row] for row in panel["values"]]
+                                            # Nastav transformáciu
+                                            self.transformation_controller.setup_transformation(mat, is_2d=True)
+                                            # Použi štandardnú bázu
+                                            self.saved_baza.append(((1, 0), (0, 1)))
+                                            pending_input_panel = None
+                                            self.is_not_baza = False
+                                            print(f"Transformácia bázy nastavená: {mat}")
+                                        except Exception as e:
+                                            print(f"Chyba pri parsovaní transformačnej matice: {e}")
+                                        continue
+
                                     constant = None
                                     data_panels = []
                                     for p in pending_input_panel["panels"]:
@@ -957,8 +1011,20 @@ class Application:
                                               (basis_x + 20, span_rect.y + 48),
                                               sub_col, 13)
 
+            # === TRANSFORMÁCIA BÁZY TLAČIDLO ===
+            if self.view_2d_mode:
+                hover_transform = transform_rect.collidepoint(mx, my)
+                self.ui_renderer.draw_button_2d(transform_rect.x, transform_rect.y,
+                                                transform_rect.w, transform_rect.h,
+                                                "Transformácia bázy",
+                                                is_dark=self.background_dark,
+                                                hover=hover_transform, primary=True)
+                self.ui_renderer.draw_text_2d("Animovaná zmena bázy (3b1b)",
+                                              (basis_x + 5, transform_rect.y + 48),
+                                              sub_col, 13)
+
             # === VLASTNÁ BÁZA ===
-            self.ui_renderer.draw_card(basis_x, basis_y + 120, 190, 180, self.background_dark, "Vlastná báza")
+            self.ui_renderer.draw_card(basis_x, basis_y + 175, 190, 180, self.background_dark, "Vlastná báza")
             for r in range(rows):
                 for c in range(cols):
                     rect = matrix_cell_rects[r][c]
@@ -977,7 +1043,50 @@ class Application:
 
             # === PENDING INPUT PANEL ===
             if pending_input_panel:
-                if pending_input_panel.get("is_linear_combination"):
+                if pending_input_panel.get("is_transformation"):
+                    # Transformácia bázy panel
+                    panel = pending_input_panel["panels"][0]
+                    color_symbol = (1, 1, 1) if self.background_dark else (0, 0, 0)
+
+                    # Card pozadie
+                    panel_width = 2 * (Config.MATRIX_CELL_W + Config.MATRIX_GAP) + 40
+                    panel_height = 2 * (Config.MATRIX_CELL_H + Config.MATRIX_GAP) + 80
+                    bg_x = panel["x"] - 20
+                    bg_y = panel["y"] - 40
+
+                    self.ui_renderer.draw_card(bg_x, bg_y, panel_width, panel_height,
+                                               self.background_dark, "Transformácia bázy")
+
+                    # Stĺpcové labely
+                    self.ui_renderer.draw_text_2d("i",
+                                                  (panel["x"] + 10, panel["y"] - 25),
+                                                  (0.2, 0.85, 0.2), 18)
+                    self.ui_renderer.draw_text_2d("j",
+                                                  (panel["x"] + Config.MATRIX_CELL_W + Config.MATRIX_GAP + 10,
+                                                   panel["y"] - 25),
+                                                  (0.85, 0.2, 0.2), 18)
+
+                    for r in range(panel["rows"]):
+                        for c in range(panel["cols"]):
+                            x = panel["x"] + c * (Config.MATRIX_CELL_W + Config.MATRIX_GAP)
+                            y = panel["y"] + r * (Config.MATRIX_CELL_H + Config.MATRIX_GAP)
+                            active = (r, c) == panel["active_cell"]
+                            col_color = [(0.2, 0.85, 0.2), (0.85, 0.2, 0.2)][c]
+                            self.ui_renderer.draw_input_box_3d(x, y, Config.MATRIX_CELL_W,
+                                                               Config.MATRIX_CELL_H,
+                                                               panel["values"][r][c], active,
+                                                               fill_color_outline=col_color,
+                                                               is_dark=self.background_dark)
+
+                    help_y = panel["y"] + 2 * (Config.MATRIX_CELL_H + Config.MATRIX_GAP) + 10
+                    self.ui_renderer.draw_text_2d("Stĺpce = kam pôjde i a j",
+                                                  (panel["x"] - 30, help_y),
+                                                  sub_col, 14)
+                    self.ui_renderer.draw_text_2d("Enter = potvrdiť | ESC = zrušiť",
+                                                  (panel["x"] - 50, help_y + 20),
+                                                  sub_col, 14)
+
+                elif pending_input_panel.get("is_linear_combination"):
                     color_symbol = (1, 1, 1) if self.background_dark else (0, 0, 0)
                     for panel_idx, panel in enumerate(pending_input_panel["panels"]):
                         is_active_panel = (panel_idx == pending_input_panel["active_panel"])
@@ -1105,6 +1214,7 @@ class Application:
         self.saved_baza.clear()
         self.camera.reset()
         self.vector_manager.span_controller.clear()
+        self.transformation_controller.clear()
 
         # Nastav flagy pre reštart
         self.startup_screen = True
@@ -1196,6 +1306,25 @@ class Application:
                 self.vector_manager.span_controller.clear()
                 return
 
+        # ===== TRANSFORMÁCIA BÁZY KROKOVANIE =====
+        if self.transformation_controller.active:
+            if event.key == pygame.K_SPACE:
+                self.transformation_controller.next_step()
+                return
+            elif event.key == pygame.K_BACKSPACE:
+                if not any([
+                    self.input_handler.show_input_active,
+                    self.input_handler.show_multiplication_active,
+                    self.input_handler.show_matrix_size_active,
+                    self.input_handler.show_random_range_active,
+                    self.matrix_active_cell != (-1, -1)
+                ]):
+                    self.transformation_controller.prev_step()
+                    return
+            elif event.key == pygame.K_c:
+                self.transformation_controller.clear()
+                return
+
         # ===== KROKOVANIE ANIMÁCIE - PÔVODNÝ KÓD =====
         if event.key == pygame.K_SPACE:
             if self.vector_manager.animation_controller.current_operation:
@@ -1245,7 +1374,7 @@ class Application:
             self.camera.reset()
             self.vector_manager.reset_animations()
         elif event.key == pygame.K_m:
-            self.show_matrix_input = not self.show_matrix_input
+            self.show_helper_lines = not self.show_helper_lines
         elif event.key == pygame.K_i:
             self.input_handler.show_input_active = True
 
@@ -1338,6 +1467,10 @@ class Application:
         # NEW: Update vector animations
         self.vector_manager.update_animations(dt)
 
+        # Update transformácie
+        if self.transformation_controller.active:
+            self.transformation_controller.update(dt)
+
         # NOVÉ: Animuj kameru ak je v 3D režime
         if not self.view_2d_mode and self.camera.animating_to_plane:
             self.camera.animate_to_plane(
@@ -1369,20 +1502,31 @@ class Application:
         """Vykreslí 2D scénu"""
         self.camera.setup_2d_projection()
 
-        # Draw grid
+        # Draw grid (pôvodná šedá mriežka - vždy ako pozadie)
         if self.grid_mode % 2 == 0:
             self.grid_renderer.draw_grid_2d(self.camera.ortho_scale,
                                             self.camera.pan_offset_x,
                                             self.camera.pan_offset_y,
                                             self.width, self.height)
 
-        # Draw axes
+        # === TRANSFORMÁCIA BÁZY - kresli transformovanú mriežku ===
+        if self.transformation_controller.active:
+            self.draw_transformation_grid_2d()
+            self.draw_transformation_basis_vectors_2d()
+
+        # Draw axes — stlmiť ak prebieha transformácia
         if self.show_axes:
-            self.axes_renderer.draw_axes_2d(self.camera.ortho_scale,
-                                            self.camera.pan_offset_x,
-                                            self.camera.pan_offset_y,
-                                            self.width, self.height,
-                                            self.ui_renderer)
+            tc = self.transformation_controller
+            if tc.active and tc.t > 0.01:
+                # Stlmené pôvodné osi — čím viac transformácia, tým menej viditeľné
+                dim_alpha = max(0.15, 1.0 - tc.t * 0.8)
+                # self._draw_axes_2d_dimmed(dim_alpha)
+            else:
+                self.axes_renderer.draw_axes_2d(self.camera.ortho_scale,
+                                                self.camera.pan_offset_x,
+                                                self.camera.pan_offset_y,
+                                                self.width, self.height,
+                                                self.ui_renderer,self.background_dark)
 
         # NOVÉ: Vykresli body kruhu ak je span aktívny
         # debug purposes
@@ -1392,6 +1536,521 @@ class Application:
         # Draw vectors
         color = (0, 0, 0) if not self.background_dark else (1, 1, 1)
         self.draw_vectors_2d(color)
+
+        # Draw helper lines (component decomposition) if enabled
+        if self.show_helper_lines:
+            self.draw_helper_lines_2d()
+
+    def _draw_axes_2d_dimmed(self, alpha):
+        """Nakreslí pôvodné 2D osi so stlmenou priehľadnosťou"""
+        width, height = pygame.display.get_window_size()
+        aspect = width / max(height, 1)
+        ortho = self.camera.ortho_scale
+        pan_x = self.camera.pan_offset_x
+        pan_y = self.camera.pan_offset_y
+
+        if aspect >= 1.0:
+            left = -ortho * aspect + pan_x
+            right = ortho * aspect + pan_x
+            bottom = -ortho + pan_y
+            top = ortho + pan_y
+        else:
+            left = -ortho + pan_x
+            right = ortho + pan_x
+            bottom = -ortho / aspect + pan_y
+            top = ortho / aspect + pan_y
+
+        glEnable(GL_BLEND)
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+        glLineWidth(1.5)
+        glBegin(GL_LINES)
+        glColor4f(1, 0, 0, alpha)  # X axis — stlmená červená
+        glVertex2f(left, 0)
+        glVertex2f(right, 0)
+        glColor4f(0, 1, 0, alpha)  # Y axis — stlmená zelená
+        glVertex2f(0, bottom)
+        glVertex2f(0, top)
+        glEnd()
+        glDisable(GL_BLEND)
+
+        # Stlmené labely
+        glMatrixMode(GL_PROJECTION)
+        glPushMatrix()
+        glLoadIdentity()
+        glOrtho(0, width, height, 0, -1, 1)
+        glMatrixMode(GL_MODELVIEW)
+        glPushMatrix()
+        glLoadIdentity()
+
+        dim_red = (1.0 * alpha, 0, 0)
+        dim_green = (0, 1.0 * alpha, 0)
+
+        def world_to_screen(wx, wy, color=(1, 1, 1), label=""):
+            sx = (wx - left) / (right - left) * width
+            sy = height - (wy - bottom) / (top - bottom) * height
+            if label in ["X1+", "X1-"]:
+                sx += -30 if label == "X1+" else 10
+                sy += 5
+            if label in ["X2+", "X2-"]:
+                sy += -30 if label == "X2-" else 10
+                sx += 5
+            self.ui_renderer.draw_text_2d(label, (sx, sy), color=color, font_size=20)
+
+        world_to_screen(right, 0, color=dim_red, label="X1+")
+        world_to_screen(left, 0, color=dim_red, label="X1-")
+        world_to_screen(0, top, color=dim_green, label="X2+")
+        world_to_screen(0, bottom, color=dim_green, label="X2-")
+
+        glPopMatrix()
+        glMatrixMode(GL_PROJECTION)
+        glPopMatrix()
+        glMatrixMode(GL_MODELVIEW)
+
+    def draw_transformation_grid_2d(self):
+        """Vykreslí transformovanú mriežku — rovnaký princíp ako klasická draw_grid_2d"""
+        tc = self.transformation_controller
+        if not tc.active or tc.t < 0.01:
+            return
+
+        M = tc.get_interpolated_matrix()
+        m00, m10 = float(M[0, 0]), float(M[1, 0])
+        m01, m11 = float(M[0, 1]), float(M[1, 1])
+
+        # === 1) Viditeľná oblasť (rovnako ako draw_grid_2d) ===
+        width, height = pygame.display.get_window_size()
+        aspect = width / max(height, 1)
+        ortho = self.camera.ortho_scale
+        pan_x = self.camera.pan_offset_x
+        pan_y = self.camera.pan_offset_y
+
+        if aspect >= 1.0:
+            left = -ortho * aspect + pan_x
+            right = ortho * aspect + pan_x
+            bottom = -ortho + pan_y
+            top = ortho + pan_y
+        else:
+            left = -ortho + pan_x
+            right = ortho + pan_x
+            bottom = -ortho / aspect + pan_y
+            top = ortho / aspect + pan_y
+
+        # === 2) Inverzná matica — mapuj rohy obrazovky do pôvodných súradníc ===
+        det = m00 * m11 - m01 * m10
+        if abs(det) < 1e-10:
+            return  # Singulárna matica, nedá sa invertovať
+
+        inv_det = 1.0 / det
+        # Inverzia 2x2: [[m11, -m01], [-m10, m00]] / det
+        i00 = m11 * inv_det
+        i01 = -m01 * inv_det
+        i10 = -m10 * inv_det
+        i11 = m00 * inv_det
+
+        # Transformuj 4 rohy obrazovky do pôvodných súradníc
+        corners_screen = [(left, bottom), (right, bottom), (right, top), (left, top)]
+        orig_xs = []
+        orig_ys = []
+        for sx, sy in corners_screen:
+            ox = i00 * sx + i01 * sy
+            oy = i10 * sx + i11 * sy
+            orig_xs.append(ox)
+            orig_ys.append(oy)
+
+        # Rozsah v pôvodných súradniciach (s rezervou)
+        orig_left = min(orig_xs)
+        orig_right = max(orig_xs)
+        orig_bottom = min(orig_ys)
+        orig_top = max(orig_ys)
+
+        orig_visible = max(orig_right - orig_left, orig_top - orig_bottom)
+
+        # === 3) Dynamický step (rovnako ako draw_grid_2d) ===
+        step = tc.grid_step
+        display_step = step
+        max_lines = 100
+        while orig_visible / display_step > max_lines:
+            display_step *= 2
+
+        # Zarovnaj rozsahy na display_step
+        start_u = math.floor(orig_left / display_step) * display_step
+        end_u = math.ceil(orig_right / display_step) * display_step
+        start_v = math.floor(orig_bottom / display_step) * display_step
+        end_v = math.ceil(orig_top / display_step) * display_step
+
+        # === 4) Kresli priamo (rovnako ako draw_grid_2d) ===
+        r_col = 0.4 * tc.t
+        g_col = 0.6 * tc.t
+        b_col = 0.2 * tc.t
+        alpha = 0.4 + 0.4 * tc.t
+
+        glEnable(GL_BLEND)
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+        glLineWidth(1.5)
+        glColor4f(r_col, g_col, b_col, alpha)
+
+        glBegin(GL_LINES)
+
+        # Vertikálne čiary (konštantné u, v sa mení)
+        u = start_u
+        while u <= end_u:
+            x1 = m00 * u + m01 * start_v
+            y1 = m10 * u + m11 * start_v
+            x2 = m00 * u + m01 * end_v
+            y2 = m10 * u + m11 * end_v
+            glVertex3f(x1, y1, 0.05)
+            glVertex3f(x2, y2, 0.05)
+            u += display_step
+
+        # Horizontálne čiary (konštantné v, u sa mení)
+        v = start_v
+        while v <= end_v:
+            x1 = m00 * start_u + m01 * v
+            y1 = m10 * start_u + m11 * v
+            x2 = m00 * end_u + m01 * v
+            y2 = m10 * end_u + m11 * v
+            glVertex3f(x1, y1, 0.05)
+            glVertex3f(x2, y2, 0.05)
+            v += display_step
+
+        glEnd()
+        glDisable(GL_BLEND)
+
+        # === 5) Transformované osi — zvýraznené čiary pre u=0 a v=0 ===
+        glEnable(GL_BLEND)
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+        axis_alpha = 0.6 + 0.4 * tc.t
+
+        # Extent pre osi — ťahajú sa cez celú viditeľnú oblasť
+        axis_extent_u = max(abs(start_u), abs(end_u))
+        axis_extent_v = max(abs(start_v), abs(end_v))
+
+        glLineWidth(3.0)
+
+        # Nová X os (u-os): v=0, u sa mení — zelená (smer î)
+        #glColor4f(0.2, 0.85, 0.2, axis_alpha)
+        if self.background_dark:
+            glColor3f(1, 1, 1)
+        else:
+            glColor3f(0, 0, 0)
+        glBegin(GL_LINES)
+        x1 = m00 * (-axis_extent_u)
+        y1 = m10 * (-axis_extent_u)
+        x2 = m00 * axis_extent_u
+        y2 = m10 * axis_extent_u
+        glVertex3f(x1, y1, 0.06)
+        glVertex3f(x2, y2, 0.06)
+        glEnd()
+
+        # Nová Y os (v-os): u=0, v sa mení — červená (smer ĵ)
+        #glColor4f(0.85, 0.2, 0.2, axis_alpha)
+        if self.background_dark:
+            glColor3f(1, 1, 1)
+        else:
+            glColor3f(0, 0, 0)
+        glBegin(GL_LINES)
+        x1 = m01 * (-axis_extent_v)
+        y1 = m11 * (-axis_extent_v)
+        x2 = m01 * axis_extent_v
+        y2 = m11 * axis_extent_v
+        glVertex3f(x1, y1, 0.06)
+        glVertex3f(x2, y2, 0.06)
+        glEnd()
+
+        glDisable(GL_BLEND)
+
+    def draw_transformation_basis_vectors_2d(self):
+        """Vykreslí animované bázové vektory pri transformácii"""
+        tc = self.transformation_controller
+        if not tc.active:
+            return
+
+        i_hat, j_hat = tc.get_basis_vectors_2d()
+
+        arrow_size = max(0.15, min(0.12 * self.camera.ortho_scale, 2.0))
+
+        # î vektor (zelený)
+        ix, iy = i_hat[0], i_hat[1]
+        vec_length = math.sqrt(ix * ix + iy * iy)
+        if vec_length > 0.05:
+            angle = math.atan2(iy, ix)
+            line_end_x = ix - arrow_size * 0.35 * math.cos(angle)
+            line_end_y = iy - arrow_size * 0.35 * math.sin(angle)
+
+            glLineWidth(5)
+            glColor3f(*tc.color_i)
+            glBegin(GL_LINES)
+            glVertex3f(0, 0, 0.4)
+            glVertex3f(line_end_x, line_end_y, 0.4)
+            glEnd()
+
+            self.vector_renderer.draw_triangle_arrowhead_2d(
+                ix, iy, angle, arrow_size, tc.color_i, 1.0, z=0.4
+            )
+
+        # ĵ vektor (červený)
+        jx, jy = j_hat[0], j_hat[1]
+        vec_length = math.sqrt(jx * jx + jy * jy)
+        if vec_length > 0.05:
+            angle = math.atan2(jy, jx)
+            line_end_x = jx - arrow_size * 0.35 * math.cos(angle)
+            line_end_y = jy - arrow_size * 0.35 * math.sin(angle)
+
+            glLineWidth(5)
+            glColor3f(*tc.color_j)
+            glBegin(GL_LINES)
+            glVertex3f(0, 0, 0.4)
+            glVertex3f(line_end_x, line_end_y, 0.4)
+            glEnd()
+
+            self.vector_renderer.draw_triangle_arrowhead_2d(
+                jx, jy, angle, arrow_size, tc.color_j, 1.0, z=0.4
+            )
+
+        # Labely pre bázové vektory (v screen coordinates)
+        width, height = pygame.display.get_window_size()
+        aspect = width / height
+
+        if aspect >= 1.0:
+            left = -self.camera.ortho_scale * aspect + self.camera.pan_offset_x
+            right = self.camera.ortho_scale * aspect + self.camera.pan_offset_x
+            bottom = -self.camera.ortho_scale + self.camera.pan_offset_y
+            top = self.camera.ortho_scale + self.camera.pan_offset_y
+        else:
+            left = -self.camera.ortho_scale + self.camera.pan_offset_x
+            right = self.camera.ortho_scale + self.camera.pan_offset_x
+            bottom = -self.camera.ortho_scale / aspect + self.camera.pan_offset_y
+            top = self.camera.ortho_scale / aspect + self.camera.pan_offset_y
+
+        glMatrixMode(GL_PROJECTION)
+        glPushMatrix()
+        glLoadIdentity()
+        glOrtho(0, width, height, 0, -1, 1)
+        glMatrixMode(GL_MODELVIEW)
+        glPushMatrix()
+        glLoadIdentity()
+
+        def world_to_screen(wx, wy):
+            sx = (wx - left) / (right - left) * width
+            sy = height - (wy - bottom) / (top - bottom) * height
+            return sx, sy
+
+        # î label
+        sx, sy = world_to_screen(ix, iy)
+        i_label = f"i ({ix:.1f}, {iy:.1f})"
+        self.ui_renderer.draw_text_2d(i_label, (sx + 10, sy - 20),
+                                       color=tc.color_i, font_size=16)
+
+        # ĵ label
+        sx, sy = world_to_screen(jx, jy)
+        j_label = f"j ({jx:.1f}, {jy:.1f})"
+        self.ui_renderer.draw_text_2d(j_label, (sx + 10, sy - 20),
+                                       color=tc.color_j, font_size=16)
+
+        glPopMatrix()
+        glMatrixMode(GL_PROJECTION)
+        glPopMatrix()
+        glMatrixMode(GL_MODELVIEW)
+
+    def draw_helper_lines_2d(self):
+        """Vykreslí pomocné čiary (rozklad na komponenty) pre všetky viditeľné vektory v 2D"""
+        # Zozbieraj vektory na vykreslenie
+        vectors_to_draw = []
+
+        if self.vector_manager.span_controller.active:
+            all_vecs = self.vector_manager.span_controller.get_current_vectors()
+            vectors_to_draw = [v for v in all_vecs if not v.get('is_persistent', False)]
+        elif self.vector_manager.animation_controller.current_operation:
+            vectors_to_draw = self.vector_manager.animation_controller.get_vectors_to_draw()
+        else:
+            vectors_to_draw = self.vector_manager.animated_vectors
+
+        if not vectors_to_draw:
+            return
+
+        width, height = pygame.display.get_window_size()
+        aspect = width / height
+
+        if aspect >= 1.0:
+            left = -self.camera.ortho_scale * aspect + self.camera.pan_offset_x
+            right = self.camera.ortho_scale * aspect + self.camera.pan_offset_x
+            bottom = -self.camera.ortho_scale + self.camera.pan_offset_y
+            top = self.camera.ortho_scale + self.camera.pan_offset_y
+        else:
+            left = -self.camera.ortho_scale + self.camera.pan_offset_x
+            right = self.camera.ortho_scale + self.camera.pan_offset_x
+            bottom = -self.camera.ortho_scale / aspect + self.camera.pan_offset_y
+            top = self.camera.ortho_scale / aspect + self.camera.pan_offset_y
+
+        # Kreslenie pomocných čiar v world coordinates (sme stále v 2D projekcii)
+        for v in vectors_to_draw:
+            vec = v.get('vec', None)
+            if vec is None:
+                continue
+
+            offset = v.get('offset', [0, 0])
+            v_alpha = v.get('alpha', 1.0)
+
+            # Preskočíme veľmi priesvitné vektory
+            if v_alpha < 0.3:
+                continue
+
+            # Spracuj jednoduché vektory (nie matice)
+            if isinstance(vec[0], (int, float)):
+                ox = offset[0]
+                oy = offset[1] if len(offset) > 1 else 0
+                vx = vec[0]
+                vy = vec[1] if len(vec) > 1 else 0
+
+                # Preskočíme nulové vektory
+                if abs(vx) < 0.01 and abs(vy) < 0.01:
+                    continue
+
+                end_x = ox + vx
+                end_y = oy + vy
+
+                line_alpha = min(v_alpha, 0.7)
+
+                glEnable(GL_BLEND)
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+                glLineWidth(2.0)
+
+                # Štýl čiar - prerušované čiary simulované krátkymi segmentmi
+                dash_length = 0.15 * self.camera.ortho_scale / 6.0
+
+                # Horizontálna čiara (x-komponent) - zelená
+                # Od offsetu po (end_x, oy) - ukazuje x-zložku
+                if abs(vx) > 0.01:
+                    glColor4f(0.2, 0.85, 0.2, line_alpha)
+                    self._draw_dashed_line_2d(ox, oy, end_x, oy, dash_length, z=0.15)
+
+                # Vertikálna čiara (y-komponent) - červená
+                # Od (end_x, oy) po (end_x, end_y) - ukazuje y-zložku
+                if abs(vy) > 0.01:
+                    glColor4f(0.85, 0.2, 0.2, line_alpha)
+                    self._draw_dashed_line_2d(end_x, oy, end_x, end_y, dash_length, z=0.15)
+
+                glDisable(GL_BLEND)
+
+                # Labely pre komponenty - v screen coordinates
+                glMatrixMode(GL_PROJECTION)
+                glPushMatrix()
+                glLoadIdentity()
+                glOrtho(0, width, height, 0, -1, 1)
+                glMatrixMode(GL_MODELVIEW)
+                glPushMatrix()
+                glLoadIdentity()
+
+                def world_to_screen(wx, wy):
+                    sx = (wx - left) / (right - left) * width
+                    sy = height - (wy - bottom) / (top - bottom) * height
+                    return sx, sy
+
+                # X-komponent label (na strede horizontálnej čiary)
+                if abs(vx) > 0.01:
+                    mid_x_screen, mid_y_screen = world_to_screen(ox + vx / 2, oy)
+                    label_x = f"{vx:.1f}" if isinstance(vx, float) else str(int(vx))
+                    # Posun label pod/nad čiaru
+                    y_offset = 15 if vy >= 0 else -20
+                    self.ui_renderer.draw_text_2d(label_x, (mid_x_screen - 10, mid_y_screen + y_offset),
+                                                   color=(0.2, 0.85, 0.2), font_size=18)
+
+                # Y-komponent label (na strede vertikálnej čiary)
+                if abs(vy) > 0.01:
+                    mid_x_screen, mid_y_screen = world_to_screen(end_x, oy + vy / 2)
+                    label_y = f"{vy:.1f}" if isinstance(vy, float) else str(int(vy))
+                    # Posun label vľavo/vpravo od čiary
+                    x_offset = 10 if vx >= 0 else -35
+                    self.ui_renderer.draw_text_2d(label_y, (mid_x_screen + x_offset, mid_y_screen - 8),
+                                                   color=(0.85, 0.2, 0.2), font_size=18)
+
+                # Vektor label v zátvorkách pri konci vektora
+                vec_label_x, vec_label_y = world_to_screen(end_x, end_y)
+                vx_str = f"{vx:.1f}" if isinstance(vx, float) else str(int(vx))
+                vy_str = f"{vy:.1f}" if isinstance(vy, float) else str(int(vy))
+                bracket_text_1 = f"[{vx_str}]"
+                bracket_text_2 = f"[{vy_str}]"
+
+                text_color = (1, 1, 1) if self.background_dark else (0, 0, 0)
+                self.ui_renderer.draw_text_2d(bracket_text_1,
+                                               (vec_label_x + 15, vec_label_y - 25),
+                                               color=text_color, font_size=16)
+                self.ui_renderer.draw_text_2d(bracket_text_2,
+                                               (vec_label_x + 15, vec_label_y - 5),
+                                               color=text_color, font_size=16)
+
+                glPopMatrix()
+                glMatrixMode(GL_PROJECTION)
+                glPopMatrix()
+                glMatrixMode(GL_MODELVIEW)
+
+            else:
+                # Matica - spracuj každý riadok/stĺpec ako vektor
+                row_offsets = v.get('row_offsets', None)
+                for i, row in enumerate(vec):
+                    if row_offsets and i < len(row_offsets):
+                        ox = row_offsets[i][0]
+                        oy = row_offsets[i][1] if len(row_offsets[i]) > 1 else 0
+                    else:
+                        ox = offset[0]
+                        oy = offset[1] if len(offset) > 1 else 0
+
+                    vx = row[0]
+                    vy = row[1] if len(row) > 1 else 0
+
+                    if abs(vx) < 0.01 and abs(vy) < 0.01:
+                        continue
+
+                    end_x = ox + vx
+                    end_y = oy + vy
+
+                    line_alpha = min(v_alpha, 0.7)
+
+                    glEnable(GL_BLEND)
+                    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+                    glLineWidth(2.0)
+
+                    dash_length = 0.15 * self.camera.ortho_scale / 6.0
+
+                    if abs(vx) > 0.01:
+                        glColor4f(0.2, 0.85, 0.2, line_alpha)
+                        self._draw_dashed_line_2d(ox, oy, end_x, oy, dash_length, z=0.15)
+
+                    if abs(vy) > 0.01:
+                        glColor4f(0.85, 0.2, 0.2, line_alpha)
+                        self._draw_dashed_line_2d(end_x, oy, end_x, end_y, dash_length, z=0.15)
+
+                    glDisable(GL_BLEND)
+
+    def _draw_dashed_line_2d(self, x1, y1, x2, y2, dash_length=0.2, z=0.15):
+        """Vykreslí prerušovanú čiaru v 2D world coordinates"""
+        dx = x2 - x1
+        dy = y2 - y1
+        length = math.sqrt(dx * dx + dy * dy)
+
+        if length < 0.001:
+            return
+
+        # Normalizuj smer
+        ndx = dx / length
+        ndy = dy / length
+
+        # Kresli segmenty
+        num_dashes = max(1, int(length / (dash_length * 2)))
+        actual_dash = length / (num_dashes * 2)
+
+        glBegin(GL_LINES)
+        for i in range(num_dashes):
+            start_t = i * 2 * actual_dash
+            end_t = start_t + actual_dash
+
+            sx = x1 + ndx * start_t
+            sy = y1 + ndy * start_t
+            ex = x1 + ndx * end_t
+            ey = y1 + ndy * end_t
+
+            glVertex3f(sx, sy, z)
+            glVertex3f(ex, ey, z)
+        glEnd()
 
     def draw_span_circle_points(self):
         """Vykreslí body kruhu pre span vizualizáciu"""
@@ -2356,6 +3015,13 @@ class Application:
         self.ui_renderer.draw_text_2d("ESC = späť do menu", (150, 20),
                                       color=text_color, font_size=14)
 
+        # Helper lines indicator
+        if self.view_2d_mode:
+            helper_status = "M: Pomocné čiary [ZAP]" if self.show_helper_lines else "M: Pomocné čiary [VYP]"
+            helper_color = (0.3, 0.9, 0.3) if self.show_helper_lines else text_color
+            self.ui_renderer.draw_text_2d(helper_status, (150, 40),
+                                          color=helper_color, font_size=14)
+
         # Draw vector toggle button
         draw_button_rect = pygame.Rect(self.width - 160, 120, 140, 35)
         button_label = "As Points" if self.vectors_as_points else "As Vectors"
@@ -2475,6 +3141,35 @@ class Application:
                     self.ui_renderer.draw_text_2d("V=zobraz rovinu",
                                                   (self.width // 2 - 180, 175),
                                                   color=text_color, font_size=14)
+
+        # === TRANSFORMÁCIA BÁZY INDIKÁTOR ===
+        if self.transformation_controller.active:
+            tc = self.transformation_controller
+            desc = tc.get_step_description()
+
+            self.ui_renderer.draw_text_2d(f"Transformácia bázy - Krok {tc.current_step}/{tc.max_steps}",
+                                          (self.width // 2 - 180, 20),
+                                          color=text_color, font_size=24)
+            self.ui_renderer.draw_text_2d(desc, (self.width // 2 - 200, 50),
+                                          color=text_color, font_size=18)
+            self.ui_renderer.draw_text_2d("SPACE=ďalší | BACKSPACE=späť | C=zrušiť",
+                                          (self.width // 2 - 180, 75),
+                                          color=text_color, font_size=16)
+
+            # Zobraz maticu
+            mat = tc.get_matrix_display()
+            if mat:
+                mat_text = f"[{mat[0][0]:.1f}  {mat[0][1]:.1f}]"
+                mat_text2 = f"[{mat[1][0]:.1f}  {mat[1][1]:.1f}]"
+                self.ui_renderer.draw_text_2d("Matica:", (20, self.height - 120),
+                                              color=text_color, font_size=16)
+                self.ui_renderer.draw_text_2d(mat_text, (20, self.height - 100),
+                                              color=text_color, font_size=18)
+                self.ui_renderer.draw_text_2d(mat_text2, (20, self.height - 78),
+                                              color=text_color, font_size=18)
+                self.ui_renderer.draw_text_2d(f"det = {tc.determinant:.2f}",
+                                              (20, self.height - 55),
+                                              color=text_color, font_size=14)
 
         # === SPAN INDIKÁTOR ===
         if self.vector_manager.span_controller.active:
@@ -2959,5 +3654,3 @@ class Application:
 
         TextureCache.clear()  # Vyčisti textúry pred ukončením
         pygame.quit()
-
-
