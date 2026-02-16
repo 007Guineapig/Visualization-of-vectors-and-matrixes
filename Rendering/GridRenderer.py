@@ -64,7 +64,7 @@ class GridRenderer:
 
     @staticmethod
     def draw_grid_2d(ortho_scale, pan_x, pan_y, width, height, step=1.0, z=-0.1, max_lines=100):
-        """Nakreslí 2D mriežku - OPTIMALIZOVANÉ"""
+        """Nakreslí 2D mriežku - PLYNULÝ ZOOM (fade medzi úrovňami)"""
         width, height = pygame.display.get_window_size()
         aspect = width / height
 
@@ -81,33 +81,68 @@ class GridRenderer:
 
         visible_range = max(right - left, top - bottom)
 
-        # Dynamicky prispôsob step podľa zoom levelu
-        display_step = step
-        while visible_range / display_step > max_lines:
-            display_step *= 2
+        # Nájdi "hrubý" step (vždy viditeľný) a "jemný" step (fade out)
+        coarse_step = step
+        while visible_range / coarse_step > max_lines:
+            coarse_step *= 2
 
-        start_x = math.floor(left / display_step) * display_step
-        end_x = math.ceil(right / display_step) * display_step
-        start_y = math.floor(bottom / display_step) * display_step
-        end_y = math.ceil(top / display_step) * display_step
+        fine_step = coarse_step / 2.0
 
-        glColor3f(0.5, 0.5, 0.5)
-        glLineWidth(0.3)
+        # Pomer: koľko jemných čiar by bolo viditeľných
+        # Keď sa blíži k max_lines, jemné čiary miznú
+        fine_line_count = visible_range / fine_step
+        # fade: 1.0 keď je málo čiar, 0.0 keď ich je max_lines
+        fade = max(0.0, min(1.0, 2.0 - fine_line_count / max_lines))
+
+        # Hrubé čiary — vždy plné
+        glLineWidth(1.0)
+        glEnable(GL_BLEND)
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+
+        start_x = math.floor(left / coarse_step) * coarse_step
+        end_x = math.ceil(right / coarse_step) * coarse_step
+        start_y = math.floor(bottom / coarse_step) * coarse_step
+        end_y = math.ceil(top / coarse_step) * coarse_step
+
+        glColor4f(0.5, 0.5, 0.5, 1.0)
         glBegin(GL_LINES)
-
         x = start_x
         while x <= end_x:
             glVertex3f(x, bottom, z)
             glVertex3f(x, top, z)
-            x += display_step
-
+            x += coarse_step
         y = start_y
         while y <= end_y:
             glVertex3f(left, y, z)
             glVertex3f(right, y, z)
-            y += display_step
-
+            y += coarse_step
         glEnd()
+
+        # Jemné čiary — fade out pri zoom out
+        if fade > 0.01 and fine_step >= step:
+            start_x_fine = math.floor(left / fine_step) * fine_step
+            end_x_fine = math.ceil(right / fine_step) * fine_step
+            start_y_fine = math.floor(bottom / fine_step) * fine_step
+            end_y_fine = math.ceil(top / fine_step) * fine_step
+
+            glColor4f(0.8, 0.8, 0.8, fade * 0.6)
+            glBegin(GL_LINES)
+            x = start_x_fine
+            while x <= end_x_fine:
+                # Preskočiť čiary na pozíciách hrubého stepu (tie sú už nakreslené)
+                if abs(x / coarse_step - round(x / coarse_step)) > 0.01:
+                    glVertex3f(x, bottom, z)
+                    glVertex3f(x, top, z)
+                x += fine_step
+            y = start_y_fine
+            while y <= end_y_fine:
+                if abs(y / coarse_step - round(y / coarse_step)) > 0.01:
+                    glVertex3f(left, y, z)
+                    glVertex3f(right, y, z)
+                y += fine_step
+            glEnd()
+
+        glDisable(GL_BLEND)
 
     @staticmethod
     def draw_grid_3d(size=10.0, step=1.0):
@@ -250,5 +285,3 @@ class GridRenderer:
     def clear_cache(cls):
         """Vymaže cache - volať pri zmene scény"""
         cls._plane_tangents_cache.clear()
-
-
