@@ -108,8 +108,14 @@ class Application(BazaInputMixin, VectorDrawingMixin, MathDisplayMixin):
 
         ctrl = self.vector_manager.animation_controller
         plane = ctrl.current_plane
+
+        if ctrl._is_matrix(ctrl.operands[0]):
+            return
+
         if not plane:
             return
+
+
 
         max_val = self.get_max_from_vectors()
         distance = max(25.0, max_val * 3.0 + 5)
@@ -478,8 +484,8 @@ class Application(BazaInputMixin, VectorDrawingMixin, MathDisplayMixin):
         if self.show_axes:
             tc = self.transformation_controller
             if tc.active and tc.t > 0.01:
-                dim_alpha = max(0.15, 1.0 - tc.t * 0.8)
-                # self._draw_axes_2d_dimmed(dim_alpha)
+                dim_alpha = max(1.0, 1.0 - tc.t * 0.8)
+                self._draw_axes_2d_dimmed(dim_alpha)
             else:
                 self.axes_renderer.draw_axes_2d(self.camera.ortho_scale,
                                                 self.camera.pan_offset_x,
@@ -499,6 +505,62 @@ class Application(BazaInputMixin, VectorDrawingMixin, MathDisplayMixin):
     # =========================================================================
     # TRANSFORMÁCIA BÁZY — RENDERING
     # =========================================================================
+
+    def _draw_axes_2d_dimmed(self, alpha):
+        """Nakreslí pôvodné 2D osi so stlmenou priehľadnosťou"""
+        width, height = self._get_window_size()
+        left, right, bottom, top = self._get_visible_area_2d()
+
+        glEnable(GL_BLEND)
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+        glLineWidth(1.5)
+        glBegin(GL_LINES)
+        if self.background_dark:
+            glColor4f(1, 1, 1, alpha)
+        else:
+            glColor4f(0, 0, 0, alpha)
+        glVertex2f(left, 0)
+        glVertex2f(right, 0)
+        if self.background_dark:
+            glColor4f(1, 1, 1, alpha)
+        else:
+            glColor4f(0, 0, 0, alpha)
+        glVertex2f(0, bottom)
+        glVertex2f(0, top)
+        glEnd()
+        glDisable(GL_BLEND)
+
+        # Stlmené labely
+        glMatrixMode(GL_PROJECTION)
+        glPushMatrix()
+        glLoadIdentity()
+        glOrtho(0, width, height, 0, -1, 1)
+        glMatrixMode(GL_MODELVIEW)
+        glPushMatrix()
+        glLoadIdentity()
+
+        dim_red = (alpha, 0, 0)
+        dim_green = (0, alpha, 0)
+
+        def label(wx, wy, color, text):
+            sx, sy = self._world_to_screen(wx, wy, left, right, bottom, top, width, height)
+            if text in ["X1+", "X1-"]:
+                sx += -30 if text == "X1+" else 10
+                sy += 5
+            if text in ["X2+", "X2-"]:
+                sy += -30 if text == "X2-" else 10
+                sx += 5
+            self.ui_renderer.draw_text_2d(text, (sx, sy), color=color, font_size=20)
+
+        label(right, 0, dim_red, "X1+")
+        label(left, 0, dim_red, "X1-")
+        label(0, top, dim_green, "X2+")
+        label(0, bottom, dim_green, "X2-")
+
+        glPopMatrix()
+        glMatrixMode(GL_PROJECTION)
+        glPopMatrix()
+        glMatrixMode(GL_MODELVIEW)
 
     def draw_transformation_grid_2d(self):
         """Vykreslí transformovanú mriežku"""
