@@ -235,7 +235,7 @@ class Application(BazaInputMixin, VectorDrawingMixin, MathDisplayMixin):
 
         self.startup_screen = True
         self.is_not_baza = True
-
+        self.vector_manager.decomposition_controller.clear()
         rows = 2 if self.view_2d_mode else 3
         cols = 2 if self.view_2d_mode else 3
         self.matrix_inputs = [["" for _ in range(cols)] for _ in range(rows)]
@@ -269,6 +269,18 @@ class Application(BazaInputMixin, VectorDrawingMixin, MathDisplayMixin):
 
     def handle_keypress(self, event):
         """Spracuje stlačenie klávesy"""
+        # Rozklad do bázy krokovanie
+        if self.vector_manager.decomposition_controller.active:
+            if event.key == pygame.K_SPACE:
+                self.vector_manager.decomposition_controller.next_step()
+                return
+            elif event.key == pygame.K_BACKSPACE:
+                if not self._is_text_input_active():
+                    self.vector_manager.decomposition_controller.prev_step()
+                    return
+            elif event.key == pygame.K_c:
+                self.vector_manager.decomposition_controller.clear()
+                return
         # Span krokovanie
         if self.vector_manager.span_controller.active:
             if event.key == pygame.K_o:
@@ -496,6 +508,8 @@ class Application(BazaInputMixin, VectorDrawingMixin, MathDisplayMixin):
         if self.vector_manager.span_controller.active:
             self.draw_span_circle_points()
 
+        if self.vector_manager.decomposition_controller.active:
+            self._draw_decomposition_overlay_2d()
         color = (0, 0, 0) if not self.background_dark else (1, 1, 1)
         self.draw_vectors_2d(color)
 
@@ -827,6 +841,223 @@ class Application(BazaInputMixin, VectorDrawingMixin, MathDisplayMixin):
         glPopMatrix()
         glMatrixMode(GL_MODELVIEW)
 
+    def _draw_decomposition_overlay_2d(self):
+        """Vykreslí celý overlay pre rozklad do bázy.
+
+        Obsahuje:
+        1. Transformovanú mriežku (rovnaký kód ako draw_transformation_grid_2d)
+        2. Bázové vektory so šípkami (rovnaký kód ako draw_transformation_basis_vectors_2d)
+        3. Komponentové čiary (kolmice na nové osi)
+        4. Paralelogram (krok 4)
+        """
+        dc = self.vector_manager.decomposition_controller
+
+        # ═══════════════════════════════════════════════════
+        # 1. TRANSFORMOVANÁ MRIEŽKA
+        #    Kópia draw_transformation_grid_2d() — len namiesto tc používa dc
+        # ═══════════════════════════════════════════════════
+        if dc.t > 0.01:
+            M = dc.get_interpolated_matrix()
+            m00, m10 = float(M[0, 0]), float(M[1, 0])
+            m01, m11 = float(M[0, 1]), float(M[1, 1])
+
+            left, right, bottom, top = self._get_visible_area_2d()
+
+            # Inverzná matica
+            det = m00 * m11 - m01 * m10
+            if abs(det) > 1e-10:
+                inv_det = 1.0 / det
+                i00, i01 = m11 * inv_det, -m01 * inv_det
+                i10, i11 = -m10 * inv_det, m00 * inv_det
+
+                corners = [(left, bottom), (right, bottom), (right, top), (left, top)]
+                orig_xs = [i00 * sx + i01 * sy for sx, sy in corners]
+                orig_ys = [i10 * sx + i11 * sy for sx, sy in corners]
+
+                orig_left, orig_right = min(orig_xs), max(orig_xs)
+                orig_bottom, orig_top = min(orig_ys), max(orig_ys)
+                orig_visible = max(orig_right - orig_left, orig_top - orig_bottom)
+
+                # Dynamický step
+                step = dc.grid_step
+                display_step = step
+                while orig_visible / display_step > 100:
+                    display_step *= 2
+
+                start_u = math.floor(orig_left / display_step) * display_step
+                end_u = math.ceil(orig_right / display_step) * display_step
+                start_v = math.floor(orig_bottom / display_step) * display_step
+                end_v = math.ceil(orig_top / display_step) * display_step
+
+                # Mriežka — IDENTICKÉ parametre ako transformation
+                alpha = 0.4 + 0.4 * dc.t
+                glEnable(GL_BLEND)
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+                glLineWidth(1.5)
+                glColor4f(0.4 * dc.t, 0.6 * dc.t, 0.2 * dc.t, alpha)
+
+                glBegin(GL_LINES)
+                u = start_u
+                while u <= end_u:
+                    glVertex3f(m00 * u + m01 * start_v, m10 * u + m11 * start_v, 0.05)
+                    glVertex3f(m00 * u + m01 * end_v, m10 * u + m11 * end_v, 0.05)
+                    u += display_step
+
+                v = start_v
+                while v <= end_v:
+                    glVertex3f(m00 * start_u + m01 * v, m10 * start_u + m11 * v, 0.05)
+                    glVertex3f(m00 * end_u + m01 * v, m10 * end_u + m11 * v, 0.05)
+                    v += display_step
+                glEnd()
+
+                # Transformované osi — IDENTICKÉ ako transformation
+                axis_extent_u = max(abs(start_u), abs(end_u))
+                axis_extent_v = max(abs(start_v), abs(end_v))
+                axis_color = (1, 1, 1) if self.background_dark else (0, 0, 0)
+
+                glLineWidth(3.0)
+
+                glColor3f(*axis_color)
+                glBegin(GL_LINES)
+                glVertex3f(m00 * (-axis_extent_u), m10 * (-axis_extent_u), 0.06)
+                glVertex3f(m00 * axis_extent_u, m10 * axis_extent_u, 0.06)
+                glEnd()
+
+                glColor3f(*axis_color)
+                glBegin(GL_LINES)
+                glVertex3f(m01 * (-axis_extent_v), m11 * (-axis_extent_v), 0.06)
+                glVertex3f(m01 * axis_extent_v, m11 * axis_extent_v, 0.06)
+                glEnd()
+
+                glDisable(GL_BLEND)
+
+        # ═══════════════════════════════════════════════════
+        # 2. BÁZOVÉ VEKTORY SO ŠÍPKAMI
+        #    Kópia draw_transformation_basis_vectors_2d() — len s dc
+        # ═══════════════════════════════════════════════════
+        if dc.t > 0.01:
+            i_hat, j_hat = dc.get_basis_vectors_2d()
+            arrow_size = max(0.15, min(0.12 * self.camera.ortho_scale, 2.0))
+
+            # b1 vektor (červená, ako î)
+            ix, iy = i_hat[0], i_hat[1]
+            self._draw_basis_vector_2d(ix, iy, arrow_size, dc.color_i)
+
+            # b2 vektor (zelená, ako ĵ)
+            jx, jy = j_hat[0], j_hat[1]
+            self._draw_basis_vector_2d(jx, jy, arrow_size, dc.color_j)
+
+            # Labely — rovnaký formát ako transformation
+            width, height = self._get_window_size()
+            left, right, bottom, top = self._get_visible_area_2d()
+
+            glMatrixMode(GL_PROJECTION)
+            glPushMatrix()
+            glLoadIdentity()
+            glOrtho(0, width, height, 0, -1, 1)
+            glMatrixMode(GL_MODELVIEW)
+            glPushMatrix()
+            glLoadIdentity()
+
+            sx, sy = self._world_to_screen(ix, iy, left, right, bottom, top, width, height)
+            self.ui_renderer.draw_text_2d(f"b1 ({ix:.1f}, {iy:.1f})", (sx + 10, sy - 20),
+                                          color=dc.color_i, font_size=16)
+
+            sx, sy = self._world_to_screen(jx, jy, left, right, bottom, top, width, height)
+            self.ui_renderer.draw_text_2d(f"b2 ({jx:.1f}, {jy:.1f})", (sx + 10, sy - 20),
+                                          color=dc.color_j, font_size=16)
+
+            glPopMatrix()
+            glMatrixMode(GL_PROJECTION)
+            glPopMatrix()
+            glMatrixMode(GL_MODELVIEW)
+
+        # ═══════════════════════════════════════════════════
+        # 3. KOMPONENTOVÉ ČIARY (kolmice na nové osi) — od kroku 2
+        # ═══════════════════════════════════════════════════
+        comp_lines = dc.get_component_lines()
+        if comp_lines:
+            dash_length = 0.15 * self.camera.ortho_scale / 6.0
+            glEnable(GL_BLEND)
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+            glLineWidth(3.0)
+            for (x1, y1), (x2, y2), color, alpha in comp_lines:
+                glColor4f(color[0], color[1], color[2], alpha)
+                self._draw_dashed_line_2d(x1, y1, x2, y2, dash_length, z=0.08)
+            glDisable(GL_BLEND)
+
+        # ═══════════════════════════════════════════════════
+        # 4. PARALELOGRAM (priesvitná výplň) — krok 4
+        # ═══════════════════════════════════════════════════
+        vertices = dc.get_parallelogram_vertices()
+        if vertices:
+            t = dc._ease(dc.animation_progress) if dc.animating else 1.0
+            para_alpha = 0.12
+
+            glEnable(GL_BLEND)
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+
+            glColor4f(dc.color_parallelogram[0],
+                      dc.color_parallelogram[1],
+                      dc.color_parallelogram[2], para_alpha)
+            glBegin(GL_QUADS)
+            for vx, vy in vertices:
+                glVertex3f(vx, vy, 0.02)
+            glEnd()
+
+            glLineWidth(2.0)
+            glColor4f(dc.color_parallelogram[0],
+                      dc.color_parallelogram[1],
+                      dc.color_parallelogram[2], 0.45)
+            glBegin(GL_LINE_LOOP)
+            for vx, vy in vertices:
+                glVertex3f(vx, vy, 0.03)
+            glEnd()
+
+            glDisable(GL_BLEND)
+
+    def _render_decomposition_ui(self, text_color):
+        """Vykreslí UI overlay pre rozklad do bázy"""
+        dc = self.vector_manager.decomposition_controller
+        cx = self.width // 2
+
+        step_text = f"Rozklad do bazy - Krok {dc.current_step}/{dc.max_steps}"
+        desc = dc.get_step_description()
+
+        self.ui_renderer.draw_text_2d(step_text, (cx - 180, 20),
+                                      color=text_color, font_size=24)
+        self.ui_renderer.draw_text_2d(desc, (cx - 220, 50),
+                                      color=text_color, font_size=18)
+        self.ui_renderer.draw_text_2d("SPACE=dalsi | BACKSPACE=spat | C=zrusit",
+                                      (cx - 180, 75), color=text_color, font_size=16)
+
+        # Matica bazy — rovnaký formát ako _render_transformation_ui
+        mat = dc.get_matrix_display()
+        if mat:
+            self.ui_renderer.draw_text_2d("Matica:", (20, self.height - 120),
+                                          color=text_color, font_size=16)
+            self.ui_renderer.draw_text_2d(f"[{mat[0][0]:.1f}  {mat[0][1]:.1f}]",
+                                          (20, self.height - 100), color=text_color, font_size=18)
+            self.ui_renderer.draw_text_2d(f"[{mat[1][0]:.1f}  {mat[1][1]:.1f}]",
+                                          (20, self.height - 78), color=text_color, font_size=18)
+            self.ui_renderer.draw_text_2d(f"det = {dc.determinant:.2f}",
+                                          (20, self.height - 55), color=text_color, font_size=14)
+
+        # Koeficienty — od kroku 2
+        if dc.current_step >= 2:
+            self.ui_renderer.draw_text_2d(f"c1 = {dc.c1:.2f}", (20, self.height - 160),
+                                          color=dc.color_scaled_b1, font_size=18)
+            self.ui_renderer.draw_text_2d(f"c2 = {dc.c2:.2f}", (20, self.height - 138),
+                                          color=dc.color_scaled_b2, font_size=18)
+
+        # Výsledné súradnice — krok 4
+        if dc.current_step >= 4:
+            box_x = cx - 120
+            box_y = 100
+            self.ui_renderer.draw_text_2d(
+                f"[v]_B = [{dc.c1:.2f}, {dc.c2:.2f}]",
+                (box_x, box_y), color=dc.color_target, font_size=22
+            )
     def _draw_dashed_line_2d(self, x1, y1, x2, y2, dash_length=0.2, z=0.15):
         dx = x2 - x1
         dy = y2 - y1
@@ -1020,7 +1251,8 @@ class Application(BazaInputMixin, VectorDrawingMixin, MathDisplayMixin):
         # Span indikátor
         if self.vector_manager.span_controller.active:
             self._render_span_ui(text_color)
-
+        if self.vector_manager.decomposition_controller.active:
+            self._render_decomposition_ui(text_color)
         glEnable(GL_DEPTH_TEST)
         glPopMatrix()
         glMatrixMode(GL_PROJECTION)

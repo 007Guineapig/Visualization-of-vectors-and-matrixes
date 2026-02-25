@@ -53,7 +53,7 @@ class BazaInputMixin:
             btn_h = 42
             btn_gap = 8
             btn_y_start = card_y + 45
-
+            decomp_rect = pygame.Rect(basis_x, basis_y + 165, 190, 44)
             vec_op_names = ["Sčítania", "Odčitanie", "Násobenie Konštantou", "Lineárna kombinácia"]
             vec_op_rects = []
             for i in range(4):
@@ -98,7 +98,7 @@ class BazaInputMixin:
                     result = self._handle_baza_mouse_click(
                         mx, my, back_rect, std_basis_rect, span_rect, transform_rect,
                         toggle_rect, vec_op_rects, mat_op_rects, matrix_cell_rects,
-                        vec_op_names, pending_input_panel, span_input_panel, rows, cols
+                        vec_op_names, pending_input_panel, span_input_panel, rows, cols,decomp_rect
                     )
                     if result:
                         action = result.get('action')
@@ -165,9 +165,13 @@ class BazaInputMixin:
     def _handle_baza_mouse_click(self, mx, my, back_rect, std_basis_rect, span_rect,
                                   transform_rect, toggle_rect, vec_op_rects, mat_op_rects,
                                   matrix_cell_rects, vec_op_names, pending_input_panel,
-                                  span_input_panel, rows, cols):
+                                  span_input_panel, rows, cols, decomp_rect):
         """Spracuje kliknutie myši na baza input obrazovke. Vráti dict s akciou."""
         # Späť
+        if decomp_rect.collidepoint(mx, my) and self.view_2d_mode:
+            panel = self._create_decomposition_panel()
+            return {'action': 'set_pending', 'panel': panel}
+
         if back_rect.collidepoint(mx, my):
             self.startup_screen = True
             self.is_not_baza = True
@@ -468,6 +472,28 @@ class BazaInputMixin:
         return None
 
     def _process_pending_submit(self, pending_input_panel):
+
+        # Rozklad do bázy
+        if pending_input_panel.get('is_decomposition', False):
+            try:
+                panels = pending_input_panel["panels"]
+                target_v = [float(panels[0]["values"][r][0]) for r in range(2)]
+                basis_v1 = [float(panels[1]["values"][r][0]) for r in range(2)]
+                basis_v2 = [float(panels[2]["values"][r][0]) for r in range(2)]
+
+                success = self.vector_manager.decomposition_controller.setup(
+                    target_v, basis_v1, basis_v2
+                )
+                if success:
+                    self.saved_baza.append(((1, 0), (0, 1)))
+                    return {'action': 'done'}
+                else:
+                    print("Bazove vektory su linearne zavisle!")
+                    return None
+            except Exception as e:
+                print(f"Chyba pri parsovani rozkladu: {e}")
+                return None
+
         """Spracuje potvrdenie pending input panelu"""
         all_filled = all(
             val.strip()
@@ -596,11 +622,53 @@ class BazaInputMixin:
             print("Invalid matrix input:", e)
         return None
 
+    def _create_decomposition_panel(self):
+        """Vytvorí input panel pre rozklad do bázy — 3 vektory (v, b1, b2)"""
+        rows_panel = 2
+        cols_panel = 1
+
+        data_panel_width = cols_panel * (Config.MATRIX_CELL_W + Config.MATRIX_GAP)
+        label_width = 35
+        gap = 20
+        total_width = 3 * (data_panel_width + label_width) + 2 * gap
+        start_x = self.width // 2 - total_width // 2
+        center_y = self.height // 2 - (rows_panel * (Config.MATRIX_CELL_H + Config.MATRIX_GAP)) // 2
+
+        panels = []
+        current_x = start_x
+
+        labels = ["v", "b1", "b2"]
+        for idx, label in enumerate(labels):
+            panels.append({
+                "type": "vector",
+                "rows": rows_panel,
+                "cols": cols_panel,
+                "values": [[""] for _ in range(rows_panel)],
+                "active_cell": (0, 0) if idx == 0 else (-1, -1),
+                "x": current_x,
+                "y": center_y,
+                "label": label
+            })
+            current_x += data_panel_width + label_width + gap
+
+        return {
+            "type": "vector",
+            "operation": "Rozklad do bazy",
+            "symbol": None,
+            "num_panels": len(panels),
+            "has_constant": False,
+            "panels": panels,
+            "active_panel": 0,
+            "is_decomposition": True
+        }
+
     def _render_baza_screen(self, mx, my, back_rect, toggle_rect, std_basis_rect,
                              span_rect, transform_rect, vec_op_rects, mat_op_rects,
                              matrix_cell_rects, pending_input_panel, span_input_panel,
                              rows, cols, card_x, card_y, card_w, card_h, card2_x,
                              basis_x, basis_y):
+
+
         """Vykreslí baza input obrazovku"""
         if self.background_dark:
             glClearColor(*Colors.DARK_BG, 1.0)
@@ -616,6 +684,16 @@ class BazaInputMixin:
 
         text_col = Colors.TEXT_DARK if self.background_dark else Colors.TEXT_LIGHT
         sub_col = Colors.TEXT_DARK_SEC if self.background_dark else Colors.TEXT_LIGHT_SEC
+
+        # Rozklad do bázy
+        decomp_rect = pygame.Rect(basis_x, basis_y + 165, 190, 44)
+        hover_decomp = decomp_rect.collidepoint(mx, my)
+        self.ui_renderer.draw_button_2d(
+            decomp_rect.x, decomp_rect.y, decomp_rect.w, decomp_rect.h,
+            "Rozklad do bazy" if self.view_2d_mode else "",
+            is_dark=self.background_dark, hover=hover_decomp,
+            primary=self.view_2d_mode
+        )
 
         # Späť
         hover_back = back_rect.collidepoint(mx, my)

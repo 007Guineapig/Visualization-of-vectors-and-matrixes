@@ -176,7 +176,16 @@ class VectorDrawingMixin:
         from VectorStuff.VectorRenderer import VectorRenderer
 
         arrow_size = self._get_arrow_size_2d()
-
+        # ===== ROZKLAD DO BÁZY MÁ NAJVYŠŠIU PRIORITU =====    <-- NOVÝ BLOK
+        if self.vector_manager.decomposition_controller.active:
+            vectors_to_draw = self.vector_manager.decomposition_controller.get_vectors_to_draw()
+            if self.vectors_as_points:
+                self._draw_vectors_as_points_2d(vectors_to_draw, color, z=0.2)
+            else:
+                self._draw_vectors_as_arrows_2d(vectors_to_draw, color, z=0.3)
+            self.draw_vector_labels_2d(vectors_to_draw)
+            return
+        # ===== KONIEC NOVÉHO BLOKU =====
         # ===== SPAN MÁ PRIORITU =====
         if self.vector_manager.span_controller.active:
             vectors_to_draw = self.vector_manager.span_controller.get_current_vectors()

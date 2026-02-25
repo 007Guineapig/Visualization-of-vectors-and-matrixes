@@ -1,6 +1,7 @@
 import numpy as np
 from Controllers.AnimationController import AnimationController
 from Controllers.SpanAnimationController import SpanAnimationController
+from Controllers.BasisDecompositionController import BasisDecompositionController
 from VectorStuff.VectorUtils import VectorUtils
 
 
@@ -13,6 +14,7 @@ class VectorManager:
         self.selected_vector_index = -1
         self.animation_controller = AnimationController()
         self.span_controller = SpanAnimationController()
+        self.decomposition_controller = BasisDecompositionController()  # NOVÉ
 
     def add_vector(self, vec, progress=0.0):
         """Add a new vector"""
@@ -39,13 +41,11 @@ class VectorManager:
         selected_np = np.array(selected['vec'])
         val_np = np.array(multiplier)
 
-        # Determine multiplication type
         if selected_np.ndim == 1 and val_np.ndim == 1:
             result = np.dot(selected_np, val_np)
         else:
             result = selected_np @ val_np
 
-        # Animate to new position
         frames = 30
         if isinstance(result, np.ndarray):
             if result.ndim == 1:
@@ -65,27 +65,22 @@ class VectorManager:
 
     def update_animations(self, dt):
         """Update frame-based animations"""
-        # Update animation controller
         self.animation_controller.update(dt)
-
-
-        # NOVÉ: Update span controller
         self.span_controller.update(dt)
+        self.decomposition_controller.update(dt)  # NOVÉ
 
-        # Pôvodná logika pre iné animácie
         for v in self.animated_vectors:
             if 'frames_left' in v and v['frames_left'] > 0:
-                if isinstance(v['vec'][0], (list, tuple)):  # matrix
+                if isinstance(v['vec'][0], (list, tuple)):
                     v['vec'] = [
                         [c + d for c, d in zip(list(curr), delt)]
                         for curr, delt in zip(v['vec'], v['delta'])
                     ]
-                else:  # single vector
+                else:
                     v['vec'] = [c + d for c, d in zip(list(v['vec']), v['delta'])]
 
                 v['frames_left'] -= 1
 
-                # Snap to clean numbers when finished
                 if v['frames_left'] == 0:
                     if isinstance(v['vec'][0], (list, tuple)):
                         v['vec'] = [[VectorUtils.snap_number(c) for c in row] for row in v['vec']]
